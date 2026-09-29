@@ -83,3 +83,15 @@ task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs
   pin; on a host that *must* egress through a proxy set `BOT_TRUST_PROXY_ENV=1` (the address check still runs, but the
   proxy does its own DNS, so it is best-effort there). `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` are honored either way.
 - `run_python` is a timeout/cwd-restricted subprocess, **not** a sandbox: run the bot in a container if you connect a model.
+
+## Expert roles and certification
+The bot is organized as 11 expert roles (Research Analyst, Executive Assistant, Personal Organizer, Data Analyst,
+Developer Assistant, Creative Writer & Designer, Community Moderator, Calculation & Utility Expert, Game Host,
+Trainer & Teacher, Conversation Partner), each with the skills its job needs (`bot/training/roles.py`). Every skill
+has a competency exam split into **dev** phrasings (part of the training curriculum) and **holdout** phrasings
+(never trained on). `python -m bot.train --certify` (or just say `roles`) runs them against the shipped model in a
+scratch database and writes [`docs/ROLE_CERTIFICATION.md`](docs/ROLE_CERTIFICATION.md) with per-skill results,
+language coverage and open items. Tests fail if a tool has no owning skill, a skill lacks exams, or results drop.
+
+Confidence is risk-tiered: tools that change state need 90% confidence, read-only ones 80%; destructive tools are
+never auto-run from a guess. Skills that need a model say so instead of pretending.

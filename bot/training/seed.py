@@ -32,6 +32,14 @@ KINDS = [("class", "class"), ("lecture", "class"), ("appointment", "appointment"
 OPTIONS = [("pizza, sushi, tacos", ["pizza", "sushi", "tacos"]), ("red or blue", ["red", "blue"]),
            ("tea, coffee or juice", ["tea", "coffee", "juice"]), ("cinema or bowling", ["cinema", "bowling"]),
            ("rock, paper, scissors", ["rock", "paper", "scissors"])]
+USERS = ["bob", "alice", "dave42", "mallory", "carol"]
+REASONS = ["spamming links", "rude language", "off topic posts", "posting spoilers"]
+MOD_VERBS = [("warn", "warn"), ("give a warning to", "warn"), ("issue a warning to", "warn"), ("mute", "mute"),
+             ("silence", "mute"), ("unmute", "unmute")]
+BLOCK_WORDS = ["spoiler", "crypto", "lottery", "casino", "giveaway"]
+POLL_QS = ["favorite fruit", "best movie", "team lunch spot", "weekend plan", "project name"]
+CHART_COLS = ["price", "sales", "region", "month", "age", "score"]
+CHART_KINDS = [("bar", "bar"), ("line", "line"), ("histogram", "hist")]
 OFFENSIVE = ["what the hell is this shit", "you are an asshole", "this is bullshit", "fuck this"]
 CHAT = {
     "en": ["tell me a joke", "how are you today", "hello", "hi there", "who are you", "what is the meaning of life",
@@ -72,7 +80,9 @@ def _fields(rng: random.Random, lang: str = "en") -> dict:
                 path=rng.choice(PATHS), id=rng.randint(1, 30), d=rng.randint(1, 3), n=rng.choice([5, 10, 20, 30]),
                 value=rng.choice([5, 10, 12.5, 100, 3, 72, 20]), fu=surface(a), fu_c=a, tu=surface(b), tu_c=b,
                 date=rng.choice(DATES), time=rng.choice(TIMES), kind=kw, kind_c=kind,
-                days=rng.choice([3, 7, 10, 14, 30, 45, 90]), opts=(o := rng.choice(OPTIONS))[0], opts_l=o[1],
+                days=rng.choice([3, 7, 10, 14, 30, 45, 90]), user=rng.choice(USERS), reason=rng.choice(REASONS),
+                verb=(v := rng.choice(MOD_VERBS))[0], verb_c=v[1], word=rng.choice(BLOCK_WORDS), q=rng.choice(POLL_QS),
+                cx=(cc := rng.sample(CHART_COLS, 2))[0], cy=cc[1], ckind=(ck := rng.choice(CHART_KINDS))[0], ckind_c=ck[1], opts=(o := rng.choice(OPTIONS))[0], opts_l=o[1],
                 etitle=rng.choice(EVENT_TITLES), off=rng.choice(OFFENSIVE), mins=rng.choice([30, 45, 60, 90]),
                 ) | local
 
@@ -147,9 +157,14 @@ SPECS: dict[str, tuple[list[str], dict]] = {
 EXTRA_EN = {
     "research": ["explain {topic}", "what is {topic}", "teach me about {topic}", "tell me about {topic}",
                  "give me an overview of {topic}", "how does {topic} work"],
+    "certify_roles": ["which experts are ready", "show role readiness", "how well trained are your roles",
+                      "certify your roles", "are you ready for each role", "role certification report",
+                      "check which specialists are trained", "give me the readiness of your experts"],
     "list_capabilities": ["what can you do", "show your capabilities", "what are your skills", "list your features",
                           "what are you able to do", "help me see what you can do"],
-    "needs_model": ["write me an essay about {topic}", "write a python function that sorts a list",
+    "needs_model": ["draw me a poster for the school fair", "create a flyer for my event", "make a banner for my shop",
+                    "sketch a floor plan of my flat", "design a website for my shop", "design a business card",
+                    "write me an essay about {topic}", "write a python function that sorts a list",
                     "translate hello to french", "brainstorm ideas for {topic}", "design a logo for my cafe",
                     "write a poem about {topic}", "help me debug my code", "draft an email to my boss",
                     "compose a story about {topic}", "create a business plan for a bakery", "write a cover letter",
@@ -162,6 +177,24 @@ EXTRA_EN = {
                         "what's open on {date}", "show free slots for {date}", "am i free on {date}"],
     "moderate_text": ["is this offensive: {off}", "check this text for bad words: {off}", "moderate: {off}",
                       "scan this for profanity: {off}", "does this contain swearing: {off}", "filter this: {off}"],
+    "list_jobs": ["show scheduled jobs", "what jobs are queued", "list my automated jobs", "any pending autonomous jobs",
+                  "show job results", "what background jobs do i have", "are there scheduled tasks running later",
+                  "list the unattended jobs"],
+    "add_blocked_word": ["block the word {word}", "add {word} to the blocklist", "ban the word {word}",
+                         "filter out the word {word}", "blacklist {word}", "add {word} to the banned words",
+                         "don't allow the word {word}", "start filtering {word}"],
+    "moderate_user": ["{verb} user {user}", "{verb} {user} for {reason}", "{verb} {user} because {reason}",
+                      "please {verb} {user}", "{verb} {user}: {reason}", "{verb} the user {user} for {reason}"],
+    "user_moderation_status": ["what is {user}'s moderation status", "show warnings for {user}",
+                               "how many warnings does {user} have", "moderation history of {user}",
+                               "is {user} muted", "check {user}'s moderation record", "show the mod log for {user}",
+                               "what has {user} been warned about"],
+    "make_poll": ["create a poll {q}: {opts}", "make a poll about {q} with options {opts}", "poll {q}: {opts}",
+                  "start a poll {q}: {opts}", "set up a vote on {q}: {opts}", "run a poll on {q} with options {opts}"],
+    "make_chart": ["plot {cy} by {cx} from {path}", "make a {ckind} chart of {cy} per {cx} in {path}",
+                   "chart {path} with x {cx} and y {cy}", "draw a {ckind} chart from {path} with x {cx} and y {cy}",
+                   "graph {cy} against {cx} using {path}", "visualize {cy} over {cx} in {path}",
+                   "show a histogram of {cx} in {path}", "make a histogram of {cx} from {path}"],
     "complete_task": ["mark task {id} as done", "complete task {id}", "finish task {id}", "task {id} is done",
                       "check off task {id}", "tick off task {id}", "i finished task number {id}", "done with task {id}"],
     "date_add": ["what date is {days} days after {date}", "add {days} days to {date}", "{days} days from {date}",
@@ -180,6 +213,11 @@ EXTRA_ARGS = {
     "moderate_text": {"text": ("off", None)},
     "read_file": {"path": ("path", None)},
     "complete_task": {"id": ("id", None)},
+    "list_jobs": {}, "certify_roles": {}, "add_blocked_word": {"word": ("word", None)},
+    "moderate_user": {"user": ("user", None), "action": ("verb", lambda f: f["verb_c"]), "reason": ("reason", None)},
+    "user_moderation_status": {"user": ("user", None)},
+    "make_poll": {"question": ("q", None), "options": ("opts", lambda f: f["opts_l"])},
+    "make_chart": {"path": ("path", None), "x": ("cx", None), "y": ("cy", None), "kind": ("ckind", lambda f: f["ckind_c"])},
     "date_add": {"date": ("date", None), "days": ("days", None)},
     "pick_random": {"options": ("opts", lambda f: f["opts_l"])},
     "research": {"question": ("topic", None)},
@@ -241,6 +279,13 @@ for _t, _extra in MORE_EN.items():
 
 # Second variety pass, targeted at the tools that scored lowest on held-out wordings.
 MORE_EN2 = {
+    "add_task": ["i have to {title}", "i should probably {title}", "gotta {title}", "make sure i {title}",
+                 "add an item: {title}"],
+    "describe_data": ["what size is {path}", "how large is {path}", "how many rows does {path} have",
+                      "what's the structure of {path}", "check the shape of {path}"],
+    "list_files": ["what have i saved so far", "show me what i've saved", "what did i save in the workspace",
+                   "what's in my workspace", "what do i have stored", "show what files i've created",
+                   "which documents have i created", "list what's saved in the workspace"],
     "find_free_slots": ["are there any free hours on {date}", "what time slots are free on {date}", "check my availability on {date}",
                         "when is my schedule empty on {date}", "show open times for {date}", "what's my availability for {date}",
                         "can you find a gap on {date}", "find a time on {date} when nothing is booked"],
@@ -266,7 +311,9 @@ MORE_EN2 = {
     "add_task": ["add a to-do: {title}", "please add {title} to my task list", "note that i have to {title}",
                  "create a reminder to {title}", "add to my todos: {title}", "i need to remember to {title}",
                  "put a task for {title}", "new todo item {title}"],
-    "web_search": ["can you google {topic}", "search the internet for {topic}", "find websites on {topic}",
+    "web_search": ["find web pages about {topic}", "find articles on {topic}", "find sites about {topic}",
+                   "get me web pages on {topic}", "look for websites covering {topic}",
+                   "can you google {topic}", "search the internet for {topic}", "find websites on {topic}",
                    "lookup {topic} online", "what can i find about {topic} on the web", "search {topic} for me",
                    "show me web results for {topic}", "search up {topic}"],
     "research": ["can you research {topic}", "do a deep dive on {topic}", "give me a summary of {topic} with sources",
@@ -305,6 +352,37 @@ def _pick(n: int, split: str) -> list[int]:
     return [i for i in range(n) if split == "all" or (i % 4 == 3) == (split == "test")]
 
 
+def curriculum() -> list[dict]:
+    """Training examples taken from each role's DEV exam phrasings (never the holdout ones). Each role's skills
+    are practiced on real-sounding requests in addition to the generated templates."""
+    from bot.training import roles
+    out = []
+    for role in roles.ROLES:
+        for sk in role.skills:
+            for split, phrase, expected, args in sk.exams:
+                if split != roles.D:
+                    continue
+                if expected == "abstain":
+                    tool = "chat"
+                elif expected.startswith("text:"):
+                    tool = "needs_model" if "language model" in expected else None
+                else:
+                    tool = expected.split("|")[0]
+                if tool is None or tool in ("learn_instruction", "add_training_example", "mark_wrong", "mark_good") \
+                        or (tool not in ("chat", "needs_model") and sk.mode in ("command", "guarded")):
+                    continue                       # explicit-command skills are handled by the exact grammar
+                frame = phrase.lower()
+                for v in (args or {}).values():
+                    for piece in (v if isinstance(v, list) else [v]):
+                        frame = frame.replace(str(piece).lower(), " ")
+                # without the argument values we can't tell command words from content words, so such examples
+                # must not contribute "trigger words" (they'd strip the topic itself from the answer)
+                out.append({"phrase": phrase, "tool": tool, "args": args or {}, "frame": frame, "weight": 2,
+                            "no_frame": args is None and tool not in ("chat", "needs_model"),
+                            "lang": "en", "cap": catalog.capability_of(tool)})
+    return out
+
+
 def generate(per_tool: int = 40, seed: int = 0, split: str = "all", per_lang: int = 16,
              langs: tuple = ()) -> list[dict]:
     """Examples: {phrase, tool, args, frame, weight, lang, cap}. frame = phrase with slot values removed."""
@@ -328,6 +406,8 @@ def generate(per_tool: int = 40, seed: int = 0, split: str = "all", per_lang: in
                 args = {a: (fn(f) if fn else f[ph]) for a, (ph, fn) in argmap.items() if "{" + ph + "}" in t}
                 if tool == "add_event":
                     args["kind"] = f["kind_c"] if "{kind}" in t else "event"
+                if tool == "make_chart" and "histogram" in t:
+                    args["kind"] = "hist"
                 out.append({"phrase": phrase, "tool": tool, "args": args, "frame": frame, "weight": 1,
                             "lang": lang, "cap": catalog.capability_of(tool)})
         chat = CHAT[lang]
@@ -337,4 +417,6 @@ def generate(per_tool: int = 40, seed: int = 0, split: str = "all", per_lang: in
             p = rng.choice(pre)
             out.append({"phrase": p + c, "tool": "chat", "args": {}, "frame": c, "weight": 1,
                         "lang": lang, "cap": "chat"})
+    if split == "all" and not langs:
+        out += curriculum()
     return out

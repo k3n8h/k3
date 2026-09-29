@@ -4,6 +4,7 @@ Classifier: multinomial Naive Bayes over binary word/bigram/char-trigram feature
 typo tolerance). Slot filling: schema-driven extractors plus per-tool "trigger words" learned from the
 training frames, which are stripped from the phrase edges to leave free-text arguments.
 """
+import contextlib
 import difflib
 import json
 import math
@@ -26,7 +27,12 @@ FAMILIARITY_POWER = 0.0
 RUNNER_UP_MIN = 0.05
 # Read-only intents that overlap by nature; their probabilities are pooled before applying the threshold.
 FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape"}]   # single-shot and read-only; never crawl
-MIN_CONFIDENCE = 0.9
+MIN_CONFIDENCE = 0.9          # for tools that change state (add/write/moderate/crawl...)
+MIN_CONFIDENCE_READONLY = 0.8  # a wrong guess on a read-only tool is harmless, so ask less of it
+READ_ONLY = {"web_search", "research", "web_fetch", "scrape", "list_events", "find_free_slots", "list_tasks",
+             "search_notes", "list_files", "read_file", "describe_data", "moderate_text", "user_moderation_status",
+             "calculate", "now", "date_add", "convert_units", "make_poll", "roll_dice", "flip_coin", "pick_random",
+             "scramble_word", "list_lessons", "list_jobs", "list_capabilities", "certify_roles", "training_status"}
 TRIGGER_DF = 0.0   # frames exclude slot values, so any frame word is command syntax
 STOPS = {"please", "thanks", "thank", "you", "can", "could", "would", "hey", "k3", "me", "for", "the", "on", "about",
          "of", "to", "up", "some", "all", "every", "my", "a", "an", "and", "at", "from", "in", "into", "is", "it",
@@ -103,13 +109,15 @@ class Model:
             for f in feats:
                 counts[ex["tool"]][f] += w
             frame = ex.get("frame") or _strip_values(ex["phrase"], ex.get("args") or {})
+            if ex.get("no_frame"):
+                continue
             n_tool[ex["tool"]] += 1
             for tok in set(WORD_RE.findall(fold(frame))):
                 df[ex["tool"]][tok] += 1
         frame_df: Counter = Counter()
         value_df: Counter = Counter()
         for ex in examples:
-            if ex["tool"] in PSEUDO:              # chit-chat / generative wording is content, not command syntax
+            if ex["tool"] in PSEUDO or ex.get("no_frame"):   # chit-chat / unframed wording is not command syntax
                 continue
             frame = ex.get("frame") or _strip_values(ex["phrase"], ex.get("args") or {})
             frame_df.update(set(WORD_RE.findall(fold(frame))))
@@ -280,6 +288,7 @@ def _extract_event(text: str, triggers, now: Optional[datetime] = None) -> tuple
         "appointment" if re.search(r"\b(appointment|appt)\b", low) else "event"
     args = {"kind": kind}
     if title := free_text(w["rest"], triggers):
+        title = re.sub(r"^(?:class|lecture|lesson|course|appointment|appt|meeting|event)\s+", "", title, flags=re.I) or title
         args["title"] = title
     if w["date"] and w["time"]:
         start = datetime.combine(w["date"], datetime.min.time()).replace(hour=w["time"][0], minute=w["time"][1])
@@ -290,6 +299,67 @@ def _extract_event(text: str, triggers, now: Optional[datetime] = None) -> tuple
 
 _DAY_UNITS = r"(days?|dias?|jours?|tage?|giorni|дн\w*|weeks?|semanas?|semaines?|wochen?|settimane|недел\w*)"
 _BACKWARD = r"\b(before|ago|earlier|prior|minus|antes|avant|vor|meno|menos|moins|назад)\b"
+
+
+def _split_options(body: str) -> list:
+    return [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
+
+
+def _extract_mod_user(text: str, triggers) -> tuple[dict, list]:
+    f = fold(text)
+    action = "unmute" if re.search(r"\bun-?mute", f) else "mute" if re.search(r"\b(?:mute|silence)\b", f) else \
+        "warn" if re.search(r"\b(?:warn|warning|strike)", f) else None
+    reason = None
+    head = text
+    if m := re.search(r"(?:\s(?:for|because|since)\s|:\s*)(.+)$", text, re.I):
+        reason, head = m.group(1).strip(" .!"), text[:m.start()]
+    words = set(triggers) | {"user", "member", "the", "warn", "warning", "mute", "silence", "unmute", "issue", "give",
+                             "please", "to"}
+    left = _trim(head.split(), STOPS | words)
+    args: dict = {}
+    if action:
+        args["action"] = action
+    if left:
+        args["user"] = left.split()[-1].strip("'\"")
+    if reason:
+        args["reason"] = reason
+    return args, [r for r in ("user", "action") if r not in args]
+
+
+def _extract_poll(text: str, triggers) -> tuple[dict, list]:
+    m = re.search(r"\bwith options\b|\boptions\b|:", text, re.I)
+    args: dict = {}
+    if m:
+        head, tail = text[:m.start()], text[m.end():]
+        opts = _split_options(_trim(tail.split(), _POLITE))
+        if len(opts) >= 2:
+            args["options"] = opts
+    else:
+        head = text
+    cut = re.search(r"\b(?:poll|vote)\b(?:\s+(?:about|on))?", head, re.I)      # drop the verb phrase up to 'poll'
+    q = free_text(head[cut.end():] if cut else head, triggers)
+    if q:
+        args["question"] = q
+    return args, [r for r in ("question", "options") if r not in args]
+
+
+def _extract_chart(text: str, triggers) -> tuple[dict, list]:
+    f = fold(text)
+    args: dict = {}
+    if m := re.search(r"[\w./-]+\.(?:csv|xlsx|xls)\b", text, re.I):
+        args["path"] = m.group(0)
+    kind = "hist" if re.search(r"\b(?:histogram|hist)\b", f) else "line" if re.search(r"\bline\b", f) else \
+        "bar" if re.search(r"\bbar\b", f) else None
+    if kind:
+        args["kind"] = kind
+    xm, ym = re.search(r"\bx\s+(\w+)", f), re.search(r"\by\s+(\w+)", f)
+    if xm and ym:
+        args["x"], args["y"] = xm.group(1), ym.group(1)
+    elif m := re.search(r"\bhist(?:ogram)?\s+of\s+(\w+)", f):
+        args["x"] = m.group(1)
+    elif m := re.search(r"\b(\w+)\s+(?:by|per|vs|versus|over|against)\s+(\w+)", f):
+        args["y"], args["x"] = m.group(1), m.group(2)
+    return args, [r for r in ("path", "x") if r not in args]
 
 
 def _days(text: str) -> Optional[int]:
@@ -312,6 +382,9 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
     text = re.sub(r"\bk3\b", " ", text, flags=re.I)
     if tool == "add_event":
         return _extract_event(text, triggers)
+    special = {"moderate_user": _extract_mod_user, "make_poll": _extract_poll, "make_chart": _extract_chart}
+    if tool in special:
+        return special[tool](text, triggers)
     schema = registry._TOOLS[tool]["definition"]["input_schema"]
     props, required = schema["properties"], schema["required"]
     args: dict = {}
@@ -335,6 +408,8 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
             body = free_text(text, triggers) or ""
             parts = [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
             v = parts if len(parts) >= 2 else None
+        elif name == "user":
+            v = (free_text(text, triggers) or "").split(" ")[-1].removesuffix("'s").strip("'\"?.") or None
         elif name == "id":
             plain = re.sub(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b", " ", text)   # dates/times hold no ids
             ids = {int(n) for n in re.findall(r"\b\d+\b", plain)}     # "tasks 3 and 4" is ambiguous: ask
@@ -403,7 +478,7 @@ def _valid(examples: list[dict]) -> list[dict]:
 def _eval(model: Model, tests: list[dict]) -> dict:
     norm = lambda a: json.dumps({k: float(v) if isinstance(v, (int, float)) and not isinstance(v, bool) else v
                                  for k, v in a.items()}, sort_keys=True)
-    acted = wrong = 0
+    acted = wrong = wrong_mut = 0
     groups: dict = {"tool": defaultdict(lambda: [0, 0, 0]), "lang": defaultdict(lambda: [0, 0, 0]),
                     "cap": defaultdict(lambda: [0, 0, 0])}
     for e in tests:
@@ -413,6 +488,7 @@ def _eval(model: Model, tests: list[dict]) -> dict:
         slot = ok and (tool in PSEUDO or (not r["missing"] and norm(r["args"]) == norm(e["args"])))
         acted += tool not in PSEUDO
         wrong += tool not in PSEUDO and not ok
+        wrong_mut += tool not in PSEUDO and not ok and tool not in READ_ONLY
         for kind, key in (("tool", e["tool"]), ("lang", e.get("lang", "?")), ("cap", e.get("cap", "?"))):
             g = groups[kind][key]
             g[0] += 1
@@ -424,7 +500,7 @@ def _eval(model: Model, tests: list[dict]) -> dict:
             "slot_accuracy": round(sum(v[2] for v in groups["tool"].values()) / n, 3),
             "per_tool": rate(groups["tool"], 1), "per_tool_slots": rate(groups["tool"], 2),
             "per_language": rate(groups["lang"], 1), "per_capability": rate(groups["cap"], 1),
-            "wrong_action_rate": round(wrong / n, 3), "action_rate": round(acted / n, 3), "examples": n}
+            "wrong_action_rate": round(wrong / n, 3), "wrong_state_change_rate": round(wrong_mut / n, 3), "action_rate": round(acted / n, 3), "examples": n}
 
 
 def fit_all(evaluate: bool = False) -> dict:
@@ -445,8 +521,24 @@ def fit_all(evaluate: bool = False) -> dict:
     return report
 
 
+_override: Optional[Model] = None
+
+
+@contextlib.contextmanager
+def using(model: Model):
+    """Use `model` instead of the saved one for the duration (e.g. certifying the shipped seed model)."""
+    global _override
+    saved, _override = _override, model
+    try:
+        yield model
+    finally:
+        _override = saved
+
+
 def get_model() -> Model:
     global _cache
+    if _override is not None:
+        return _override
     p = model_path()
     if not p.exists():
         fit_all()
@@ -464,18 +556,19 @@ def resolve(model: Model, text: str) -> Optional[dict]:
     if not ranked:
         return None
     top_t, top_p = ranked[0]
-    if top_t not in ("calculate", "chat") or (top_t == "chat" and top_p < 0.6):
+    if top_t != "chat" or top_p < 0.6:
         expr = _expression(text)                 # spoken arithmetic: "12 times 7", "cuanto es 12 por 7"
         if expr and re.fullmatch(r"[\d\.\(\)\s\+\-\*/%]+", expr) and \
                 any(t == "calculate" and p > 1e-6 for t, p in ranked[:6]):
             return {"tool": "calculate", "args": {"expression": expr}, "confidence": round(top_p, 3), "missing": []}
-    if top_p < MIN_CONFIDENCE:
+    need = MIN_CONFIDENCE_READONLY if top_t in READ_ONLY else MIN_CONFIDENCE
+    if top_p < need:
         for fam_set in FAMILIES:
             if top_t in fam_set:
                 fam = sum(p for t, p in ranked if t in fam_set)
-                if fam >= MIN_CONFIDENCE:
+                if fam >= need:
                     top_p = fam
-    if top_t == "chat" or top_p < MIN_CONFIDENCE:
+    if top_t == "chat" or top_p < need:
         return None
     first = None
     for i, (t, p) in enumerate(ranked[:3]):

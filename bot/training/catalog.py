@@ -47,7 +47,7 @@ CAPABILITIES = [
     dict(id="teaching", name="Learning & training", offline=True,
          tools=["learn_instruction", "list_lessons", "forget_lesson", "train_model", "training_status",
                 "add_training_example", "train_from_file", "mark_wrong", "mark_good", "reset_training",
-                "list_capabilities"],
+                "list_capabilities", "certify_roles"],
          summary="Teach shortcuts and phrasings, correct mistakes, retrain the on-device intent learner.",
          examples=["train add \"gimme a d20\" => roll d20", "wrong => research solar panels"]),
     dict(id="generative", name="Writing, coding, design, translation, brainstorming", offline=False, tools=[],

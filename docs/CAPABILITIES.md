@@ -50,7 +50,7 @@ Try: `roll 2d6`; `heads or tails`
 
 ### Learning & training  (works offline)
 Teach shortcuts and phrasings, correct mistakes, retrain the on-device intent learner.
-Tools: `learn_instruction`, `list_lessons`, `forget_lesson`, `train_model`, `training_status`, `add_training_example`, `train_from_file`, `mark_wrong`, `mark_good`, `reset_training`, `list_capabilities`
+Tools: `learn_instruction`, `list_lessons`, `forget_lesson`, `train_model`, `training_status`, `add_training_example`, `train_from_file`, `mark_wrong`, `mark_good`, `reset_training`, `list_capabilities`, `certify_roles`
 Try: `train add "gimme a d20" => roll d20`; `wrong => research solar panels`
 
 ### Writing, coding, design, translation, brainstorming  (needs a model provider)

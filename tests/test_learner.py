@@ -25,7 +25,8 @@ def test_heldout_generalization_and_seen_phrasing():
     h = r["heldout"]
     assert r["seen_phrasing"] >= 0.85              # new slot values, known phrasings
     assert h["intent_accuracy"] >= 0.55            # wordings never seen in training
-    assert h["wrong_action_rate"] <= 0.06          # unfamiliar wording abstains rather than misfires
+    assert h["wrong_action_rate"] <= 0.08          # unfamiliar wording mostly abstains rather than misfires
+    assert h["wrong_state_change_rate"] <= 0.01    # ...and almost never changes state by mistake
     assert set(h["per_language"]) == {"en", "es", "fr", "de", "pt", "it", "ru"}
     assert r["seed_examples"] > 2000
 

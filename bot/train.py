@@ -3,6 +3,7 @@
   python -m bot.train [examples.jsonl|csv]   train (optionally importing your examples first)
   python -m bot.train --report               also write docs/TRAINING_REPORT.md
   python -m bot.train --docs                 (re)write docs/CAPABILITIES.md from the catalog
+  python -m bot.train --certify              certify every expert role, write docs/ROLE_CERTIFICATION.md
 """
 import json
 import sys
@@ -43,6 +44,13 @@ def render_report(r: dict) -> str:
 def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     registry.load_all()
+    if "--certify" in sys.argv:
+        from bot.training import certify
+        rep = certify.certify()
+        DOCS.mkdir(exist_ok=True)
+        (DOCS / "ROLE_CERTIFICATION.md").write_text(certify.render_markdown(rep))
+        print(certify.summary(rep))
+        return
     if "--docs" in sys.argv:
         print("wrote", write_docs())
         return

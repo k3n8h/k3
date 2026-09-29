@@ -55,3 +55,22 @@ def execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:
 def query(sql: str, params: tuple = ()) -> list[dict]:
     with _lock:
         return [dict(r) for r in db().execute(sql, params).fetchall()]
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def scratch():
+    """Temporarily use an empty in-memory database (e.g. for certification), then restore the real one."""
+    global _conn
+    with _lock:
+        saved = _conn
+        _conn = None
+        connect(":memory:")
+    try:
+        yield
+    finally:
+        with _lock:
+            _conn.close()
+            _conn = saved

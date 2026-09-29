@@ -33,6 +33,8 @@ def parse_grammar(text: str):
         return "learn_instruction", {"trigger": m.group(1), "action": m.group(2).strip()}
     if m := _TRAIN_ADD.match(t):
         return "add_training_example", {"phrase": m.group(1), "command": m.group(2).strip()}
+    if low in ("roles", "certify", "certification", "role report"):
+        return "certify_roles", {}
     if low in ("capabilities", "features", "skills"):
         return "list_capabilities", {}
     if low == "train":
@@ -51,13 +53,35 @@ def parse_grammar(text: str):
             return "mark_wrong", {"command": m.group(1).strip()}
     if low in ("good", "correct", "that was right"):
         return "mark_good", {}
+    if m := re.match(r"(?:run python|python)\s*:?\s+(.+)$", t, re.I | re.S):
+        return "run_python", {"code": m.group(1)}
+    if m := re.match(r"write file\s+(\S+?)\s*:\s*(.*)$", t, re.I | re.S):
+        return "write_file", {"path": m.group(1), "content": m.group(2)}
+    if m := re.match(r"(?:read|show) file\s+(\S+)$", t, re.I):
+        return "read_file", {"path": m.group(1)}
+    if low in ("files", "list files"):
+        return "list_files", {}
+    if m := re.match(r"describe\s+(\S+\.(?:csv|xlsx|xls))$", t, re.I):
+        return "describe_data", {"path": m.group(1)}
+    if m := re.match(r"query\s+(\S+\.(?:csv|xlsx|xls))\s+where\s+(.+)$", t, re.I):
+        return "query_data", {"path": m.group(1), "filter": m.group(2).strip()}
+    if m := re.match(r"schedule job\s+[\"'“](.+?)[\"'”]\s+at\s+(\S+)$", t, re.I):
+        return "schedule_job", {"goal": m.group(1), "run_at": m.group(2)}
+    if low in ("jobs", "list jobs"):
+        return "list_jobs", {}
+    if m := re.match(r"(?:complete|finish) task\s+(\d+)$", low):
+        return "complete_task", {"id": int(m.group(1))}
+    if m := re.match(r"delete note\s+(\d+)$", low):
+        return "delete_note", {"id": int(m.group(1))}
     if low in ("lessons", "what have you learned"):
         return "list_lessons", {}
     if m := re.match(r"forget\s+(\d+)$", low):
         return "forget_lesson", {"id": int(m.group(1))}
     if low == "tools":
         return "__text__", "Tools: " + ", ".join(sorted(registry._TOOLS))
-    if m := re.match(r"(?:web\s+)?search\s+(?:for\s+)?(.+)", t, re.I):
+    if m := re.match(r"search\s+(?:my\s+)?notes?\s+(?:for\s+|about\s+|on\s+)?(.+)", t, re.I):
+        return "search_notes", {"query": m.group(1)}
+    if m := re.match(r"(?:web\s+)?search\s+(?:the\s+(?:web|internet|net)\s+)?(?:for\s+)?(.+)", t, re.I):
         return "web_search", {"query": m.group(1)}
     if m := re.match(r"research\s+(.+)", t, re.I):
         return "research", {"question": m.group(1)}

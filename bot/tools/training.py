@@ -100,3 +100,10 @@ def reset_training() -> dict:
 @tool("List what the bot can do, grouped by capability. Optionally filter by area (e.g. research, schedule).")
 def list_capabilities(area: str = "") -> str:
     return catalog.render_summary(area)
+
+
+@tool("Certify the expert roles: for each role's skills, check the tools, training coverage and competency exams. "
+      "Optionally limit to one role id (e.g. research_analyst, data_analyst).")
+def certify_roles(role: str = "") -> str:
+    from bot.training import certify
+    return certify.summary(certify.certify(role))
