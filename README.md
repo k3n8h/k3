@@ -54,3 +54,17 @@ python -m bot.train [file]         # headless
 The learner never auto-runs destructive tools, asks for missing arguments instead of guessing, and with a real
 LLM configured, your taught examples are added to the prompt as few-shot hints. This is a small classifier, not
 an LLM: it generalizes to new phrasings only as far as its examples cover.
+
+## Capabilities, languages and training coverage
+Everything the bot can do is organized in `bot/training/catalog.py` (capabilities, instruction styles, languages,
+task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md); ask the bot
+`capabilities` or `what can you do`. Tests fail if a tool is missing from the catalog.
+
+- **Languages trained:** English, Spanish, French, German, Portuguese, Italian (Latin script; accents folded).
+  Any other language works through an LLM provider, or teach it with `train add` / `train from`.
+- **Subjects:** ~80 topics across 10 subject areas seed the research/search/notes slots.
+- **Recognized but not faked:** writing, coding, translating, brainstorming and design requests are classified
+  as `needs_model`; offline the bot says it needs a model instead of pretending.
+- **Scheduling from free text:** "book a class math on 2030-05-06 at 10:30", "dentist tomorrow at 3pm for 90 minutes".
+- **Measured quality:** [`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md) (`python -m bot.train --report`), scored on
+  wordings held out from training, broken down by language, capability and tool.

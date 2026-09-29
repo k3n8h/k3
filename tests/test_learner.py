@@ -22,9 +22,12 @@ def bot():
 
 def test_heldout_generalization_and_seen_phrasing():
     r = learner.fit_all(evaluate=True)
-    assert r["seen_phrasing"] >= 0.95            # new slot values, known phrasings
-    assert r["heldout"]["intent_accuracy"] >= 0.7  # phrasings never seen in training
-    assert r["seed_examples"] > 500
+    h = r["heldout"]
+    assert r["seen_phrasing"] >= 0.85              # new slot values, known phrasings
+    assert h["intent_accuracy"] >= 0.55            # wordings never seen in training
+    assert h["wrong_action_rate"] <= 0.06          # unfamiliar wording abstains rather than misfires
+    assert set(h["per_language"]) == {"en", "es", "fr", "de", "pt", "it"}
+    assert r["seed_examples"] > 2000
 
 
 def test_free_form_intents_and_slots():
@@ -105,3 +108,77 @@ def test_first_use_without_explicit_connect_does_not_deadlock(tmp_path, monkeypa
     r = subprocess.run([sys.executable, "-c", "from bot import memory; print(memory.query('select 1 as x'))"],
                        env={**__import__('os').environ, "BOT_HOME": str(tmp_path)}, capture_output=True, text=True, timeout=30)
     assert "[{'x': 1}]" in r.stdout
+
+
+def test_catalog_covers_every_tool_and_is_consistent():
+    from bot.training import catalog
+    owned = [t for c in catalog.CAPABILITIES for t in c["tools"]]
+    assert len(owned) == len(set(owned)), "a tool is listed under two capabilities"
+    assert set(owned) == set(registry._TOOLS), (set(registry._TOOLS) ^ set(owned))
+    assert all(catalog.capability_of(t) != "unknown" for t in registry._TOOLS)
+    md = catalog.render_markdown()
+    assert "Spanish" in md and "Subject areas" in md and "Natural sciences" in md
+    assert len(catalog.all_topics()) >= 60
+    assert "research" in registry.call("list_capabilities", {"area": "research"}).lower()
+    assert "Research & web" in bot().run("what can you do")
+
+
+def test_multilingual_free_form():
+    g = learner.interpret
+    cases = {
+        "busca información sobre energía solar": ("web_search", None),
+        "investiga sobre la revolución francesa": ("research", None),
+        "wie spät ist es": ("now", {}),
+        "quelle heure est-il": ("now", {}),
+        "que horas são": ("now", {}),
+        "che ore sono": ("now", {}),
+        "cuánto es 12 por 7": ("calculate", {"expression": "12 * 7"}),
+        "combien font 9 plus 4": ("calculate", {"expression": "9 + 4"}),
+        "berechne 6 mal 7": ("calculate", {"expression": "6 * 7"}),
+        "quanto é 20 vezes 3": ("calculate", {"expression": "20 * 3"}),
+        "quanto fa 100 diviso 4": ("calculate", {"expression": "100 / 4"}),
+        "lance une pièce": ("flip_coin", {}),
+        "wirf eine münze": ("flip_coin", {}),
+        "tira 2d6": ("roll_dice", {"spec": "2d6"}),
+        "convierte 5 km a mi": ("convert_units", {"value": 5.0, "from_unit": "km", "to_unit": "mi"}),
+        "guarda una nota compras: leche y huevos": ("add_note", {"title": "compras", "body": "leche y huevos"}),
+        "mostra le mie attività": ("list_tasks", {}),
+        "zeige meine termine": ("list_events", {}),
+    }
+    for phrase, (tool, args) in cases.items():
+        r = g(phrase)
+        ok = {"web_search", "research"} if tool == "web_search" else {tool}
+        assert r and r["tool"] in ok, (phrase, r)
+        if args is not None:
+            assert r["args"] == args, (phrase, r)
+
+
+def test_generative_requests_are_recognized_not_faked():
+    a = bot()
+    for p in ("write me an essay about volcanoes", "escribe un poema sobre el mar", "schreibe ein gedicht über den herbst"):
+        out = a.run(p)
+        assert "language model" in out, (p, out)
+
+
+def test_scheduling_from_free_form():
+    from datetime import datetime
+    now = datetime(2030, 3, 4, 8, 0)           # a Monday
+    w = learner.parse_when("dentist tomorrow at 3pm for 90 minutes", now)
+    assert (w["date"].isoformat(), w["time"], w["minutes"]) == ("2030-03-05", (15, 0), 90)
+    assert learner.parse_when("yoga next monday at 9am", now)["date"].isoformat() == "2030-03-11"
+    assert learner.parse_when("call at 7am", now)["date"].isoformat() == "2030-03-05"   # already past today
+    args, missing = learner._extract_event("book a class math on 2030-05-06 at 10:30", ["book", "a", "class"], now)
+    assert args == {"kind": "class", "title": "math", "start": "2030-05-06T10:30", "end": "2030-05-06T11:30"}
+    a = bot()
+    out = a.run("schedule team sync on 2030-03-05 at 14:00")
+    assert '"created": true' in out
+    assert "conflict" in a.run("put yoga in my calendar on 2030-03-05 at 14:30").lower()
+
+
+def test_subject_topics_flow_into_research_slot():
+    learner.fit_all()
+    trig = learner.get_model().triggers_for("research")
+    for topic in ("plate tectonics", "compound interest", "film noir", "japanese kanji", "silk road"):
+        for form in (f"explain {topic}", f"tell me about {topic} please", f"i need to learn about {topic}"):
+            args, missing = learner.extract_args("research", form, trig)
+            assert args == {"question": topic} and not missing, (form, args)

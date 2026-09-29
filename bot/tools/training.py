@@ -3,6 +3,7 @@ import csv
 import json
 
 from bot import learner, memory, registry
+from bot.training import catalog
 from bot.registry import tool
 from bot.tools.code import safe_path
 
@@ -30,7 +31,7 @@ def training_status() -> dict:
     for e in ex:
         by_source[e["source"]] = by_source.get(e["source"], 0) + 1
     m = learner.get_model()
-    return {"model_examples": m.n_examples, "intents": sorted(t for t in m.counts if t != "chat"),
+    return {"model_examples": m.n_examples, "intents": sorted(t for t in m.counts if t not in learner.PSEUDO),
             "user_examples": len(ex), "by_source": by_source}
 
 
@@ -91,3 +92,8 @@ def reset_training() -> dict:
     if learner.model_path().exists():
         learner.model_path().unlink()
     return {"deleted_examples": n}
+
+
+@tool("List what the bot can do, grouped by capability. Optionally filter by area (e.g. research, schedule).")
+def list_capabilities(area: str = "") -> str:
+    return catalog.render_summary(area)

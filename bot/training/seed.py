@@ -1,53 +1,81 @@
-"""Synthetic training data: templates x paraphrases x slot fillers, with light noise.
+"""Synthetic training data: templates x paraphrases x slot fillers x languages, with light noise.
 
-Each tool has several phrasing templates. `split="train"` drops every 4th template so
-`split="test"` measures generalization to phrasings the model never saw.
+`split="train"` drops every 4th template of each tool/language so `split="test"` measures generalization
+to phrasings never seen in training. Examples carry `lang` and `cap` (capability) tags for reporting.
 """
 import random
 import re
 
-TOPICS = ["solar panels", "the french revolution", "python asyncio", "electric cars", "climate change",
-          "quantum computing", "sourdough bread", "the roman empire", "machine learning", "coffee prices",
-          "renewable energy", "space telescopes"]
+from bot.training import catalog, i18n
+
+TOPICS = catalog.all_topics()
 URLS = ["https://example.com", "https://news.ycombinator.com", "https://docs.python.org/3/",
-        "https://en.wikipedia.org/wiki/Python", "https://blog.example.org/posts"]
+        "https://en.wikipedia.org/wiki/Python", "https://blog.example.org/posts", "https://www.bbc.com/news",
+        "https://arxiv.org/abs/1706.03762"]
 SELECTORS = ["h1", "p.x", "a.link", "div.price", "ul li", "h2", "span.title", "table tr"]
-EXPRS = [("12 times 7", "12 * 7"), ("15 + 27", "15 + 27"), ("100 divided by 8", "100 / 8"),
-         ("(3+4)*5", "(3+4)*5"), ("9 minus 4", "9 - 4"), ("2 plus 2 times 3", "2 + 2 * 3"),
-         ("18 * 3", "18 * 3"), ("250 / 5", "250 / 5")]
 DICE = ["2d6", "d20", "3d8", "1d10", "d6", "4d4"]
 TITLES = ["buy milk", "email the team", "finish the report", "call mom", "book flights", "water the plants",
-          "renew passport", "prepare slides"]
+          "renew passport", "prepare slides", "study for the exam", "pay the rent"]
+EVENT_TITLES = ["dentist", "math", "team sync", "yoga", "piano practice", "physics", "haircut", "project review"]
 BODIES = ["eggs, bread, butter", "ideas for the launch", "password hint is the dog's name",
           "meeting moved to friday", "read chapter three"]
-PATHS = ["sales.csv", "data/users.csv", "report.xlsx", "results/q3.csv"]
+PATHS = ["sales.csv", "data/users.csv", "report.xlsx", "results/q3.csv", "notes.md", "script.py"]
 UNITS = [("km", "km"), ("kilometers", "km"), ("mi", "mi"), ("miles", "mi"), ("m", "m"), ("meters", "m"),
          ("ft", "ft"), ("feet", "ft"), ("kg", "kg"), ("kilograms", "kg"), ("lb", "lb"), ("pounds", "lb"),
          ("g", "g"), ("grams", "g"), ("oz", "oz"), ("ounces", "oz"), ("c", "c"), ("celsius", "c"),
          ("f", "f"), ("fahrenheit", "f")]
 GROUPS = [["km", "mi", "m", "ft"], ["kg", "lb", "g", "oz"], ["c", "f"]]
-CHAT = ["tell me a joke", "how are you today", "hello", "hi there", "who are you", "what is the meaning of life",
-        "write me a poem", "thanks a lot", "good morning", "you are awesome", "what's your favorite color",
-        "i'm feeling sad", "explain how photosynthesis works", "give me advice about my career",
-        "what do you think about pineapple on pizza", "sing me a song", "goodbye", "can you help me",
-        "how does the internet work", "why is the sky blue", "translate hello to spanish",
-        "write a story about a dragon", "what should i have for dinner", "tell me something interesting",
-        "who won the world cup", "how tall is mount everest", "are you a robot", "let's chat",
-        "what can you do", "ok", "nevermind", "that's funny", "blah blah", "hmm", "lol", "cool thanks",
-        "what's the weather like", "play some music", "order me a pizza", "call my mother"]
-PREFIXES = ["", "", "", "please ", "hey k3, ", "can you ", "could you ", "k3 "]
-SUFFIXES = ["", "", "", " please", " thanks", " for me"]
+DATES = ["2030-03-05", "2030-11-21", "2031-01-09", "2030-07-14"]
+TIMES = ["09:00", "14:00", "10:30", "16:15", "08:45"]
+KINDS = [("class", "class"), ("lecture", "class"), ("appointment", "appointment"), ("meeting", "event"),
+         ("event", "event")]
+OFFENSIVE = ["what the hell is this shit", "you are an asshole", "this is bullshit", "fuck this"]
+CHAT = {
+    "en": ["tell me a joke", "how are you today", "hello", "hi there", "who are you", "what is the meaning of life",
+           "thanks a lot", "good morning", "you are awesome", "what's your favorite color", "i'm feeling sad",
+           "give me advice about my career", "what do you think about pineapple on pizza", "sing me a song",
+           "goodbye", "let's chat", "ok", "nevermind", "that's funny", "blah blah", "hmm",
+           "lol", "cool thanks", "what's the weather like", "play some music", "order me a pizza",
+           "call my mother", "are you a robot", "good night", "i love you", "you're wrong", "wow", "really",
+           "how was your day", "what are you doing", "i'm bored", "that's interesting", "you're funny", "not really",
+           "maybe later", "see you tomorrow", "nice to meet you", "i don't know", "sounds good", "no thanks",
+           "yes please", "what's up", "long time no see", "you are so smart"],
+    **{l: t["chat"] for l, t in i18n.LANG_TEMPLATES.items()},
+}
+PREFIXES = ["", "", "", "please ", "hey k3, ", "can you ", "could you ", "k3 ", "i'd like you to ", "i want you to ",
+            "would you mind "]
+SUFFIXES = ["", "", "", " please", " thanks", " for me", " asap", " right now"]
 
 
-def _fields(rng: random.Random) -> dict:
-    et, es = rng.choice(EXPRS)
+def _expr(rng: random.Random, lang: str) -> tuple[str, str]:
+    if rng.random() < 0.25:
+        return rng.choice([("(3+4)*5", "(3+4)*5"), ("18 * 3", "18 * 3"), ("250 / 5", "250 / 5"),
+                           ("15 + 27", "15 + 27")])
+    sym, words = rng.choice(i18n.OPWORDS.get(lang, i18n.OPWORDS["en"]))
+    a, b = rng.randint(2, 99), rng.randint(2, 99)
+    return f"{a} {rng.choice(words)} {b}", f"{a} {sym} {b}"
+
+
+def _fields(rng: random.Random, lang: str = "en") -> dict:
+    et, es = _expr(rng, lang)
     group = rng.choice(GROUPS)
     a, b = rng.sample(group, 2)
     surface = lambda canon: rng.choice([s for s, c in UNITS if c == canon])
+    kw, kind = rng.choice(KINDS)
+    loc = i18n.FILLERS.get(lang)
+    local = {k: rng.choice(v) for k, v in loc.items()} if loc and rng.random() < 0.75 else {}
     return dict(topic=rng.choice(TOPICS), url=rng.choice(URLS), sel=rng.choice(SELECTORS), expr=et, expr_sym=es,
                 dice=rng.choice(DICE), title=rng.choice(TITLES), body=rng.choice(BODIES),
                 path=rng.choice(PATHS), id=rng.randint(1, 30), d=rng.randint(1, 3), n=rng.choice([5, 10, 20, 30]),
-                value=rng.choice([5, 10, 12.5, 100, 3, 72, 20]), fu=surface(a), fu_c=a, tu=surface(b), tu_c=b)
+                value=rng.choice([5, 10, 12.5, 100, 3, 72, 20]), fu=surface(a), fu_c=a, tu=surface(b), tu_c=b,
+                date=rng.choice(DATES), time=rng.choice(TIMES), kind=kw, kind_c=kind,
+                etitle=rng.choice(EVENT_TITLES), off=rng.choice(OFFENSIVE), mins=rng.choice([30, 45, 60, 90]),
+                ) | local
+
+
+def _end(f: dict) -> str:
+    from datetime import datetime, timedelta
+    return (datetime.fromisoformat(f"{f['date']}T{f['time']}") + timedelta(minutes=60)).isoformat(timespec="minutes")
 
 
 # tool -> (templates, {arg: (placeholder, transform|None)}); an arg is included only if its
@@ -111,12 +139,106 @@ SPECS: dict[str, tuple[list[str], dict]] = {
 }
 
 
+
+EXTRA_EN = {
+    "research": ["explain {topic}", "what is {topic}", "teach me about {topic}", "tell me about {topic}",
+                 "give me an overview of {topic}", "how does {topic} work"],
+    "list_capabilities": ["what can you do", "show your capabilities", "what are your skills", "list your features",
+                          "what are you able to do", "help me see what you can do"],
+    "needs_model": ["write me an essay about {topic}", "write a python function that sorts a list",
+                    "translate hello to french", "brainstorm ideas for {topic}", "design a logo for my cafe",
+                    "write a poem about {topic}", "help me debug my code", "draft an email to my boss",
+                    "compose a story about {topic}", "create a business plan for a bakery", "write a cover letter",
+                    "summarize this article for me", "write me a song about {topic}", "come up with names for my dog"],
+    "add_event": ["schedule {etitle} on {date} at {time}", "book a {kind} {etitle} on {date} at {time}",
+                  "add a {kind} {etitle} at {time} on {date}", "put {etitle} in my calendar on {date} at {time}",
+                  "set up a {kind}: {etitle}, {date} {time}", "i have a {kind} {etitle} on {date} at {time}",
+                  "create {kind} {etitle} for {date} {time}", "block {date} at {time} for {etitle}"],
+    "find_free_slots": ["when am i free on {date}", "find a free slot on {date}", "any free time on {date}",
+                        "what's open on {date}", "show free slots for {date}", "am i free on {date}"],
+    "moderate_text": ["is this offensive: {off}", "check this text for bad words: {off}", "moderate: {off}",
+                      "scan this for profanity: {off}", "does this contain swearing: {off}", "filter this: {off}"],
+    "read_file": ["show file {path}", "read the file {path}", "cat {path}", "display the contents of {path}",
+                  "view the text of {path}", "print out {path}"],
+}
+EXTRA_ARGS = {
+    "add_event": {"kind": ("etitle", lambda f: f["kind_c"]),
+                  "title": ("etitle", lambda f: f["etitle"]), "start": ("etitle", lambda f: f"{f['date']}T{f['time']}"),
+                  "end": ("etitle", _end)},
+    "find_free_slots": {"date": ("date", None)},
+    "moderate_text": {"text": ("off", None)},
+    "read_file": {"path": ("path", None)},
+    "research": {"question": ("topic", None)},
+    "list_capabilities": {}, "needs_model": {},
+}
+for _t, _extra in EXTRA_EN.items():
+    if _t in SPECS:
+        SPECS[_t][0].extend(_extra)
+    else:
+        SPECS[_t] = (list(_extra), EXTRA_ARGS[_t])
+
+
+# More phrasing variety per tool (breadth of wording is what lets the learner handle unseen requests).
+MORE_EN = {
+    "web_search": ["look for {topic} on the internet", "i want to find articles about {topic}", "find pages about {topic}",
+                   "run a web search for {topic}", "search online for {topic}", "get me some links on {topic}",
+                   "bing {topic}", "any websites about {topic}"],
+    "research": ["research the topic of {topic}", "put together a report on {topic}", "i need to learn about {topic}",
+                 "read up on {topic} for me", "look into {topic} thoroughly", "collect sources about {topic}",
+                 "what do experts say about {topic}", "prepare a literature review of {topic}", "brief me on {topic}",
+                 "find reliable information about {topic}"],
+    "web_fetch": ["get me the text of {url}", "can you read the page {url}", "pull the content from {url}",
+                  "visit the site {url} and tell me what it says", "grab {url}", "browse to {url}",
+                  "summarize the page {url}", "look at {url}", "check out {url}", "what is on {url}"],
+    "scrape": ["scrape all the {sel} from {url}", "collect every {sel} on {url}", "harvest {sel} elements from {url}"],
+    "describe_data": ["give me an overview of the dataset {path}", "how many rows and columns are in {path}",
+                      "show the columns of {path}", "what does the data in {path} look like",
+                      "summary statistics for {path}", "explore the table {path}"],
+    "read_file": ["show me the contents of {path}", "open {path} and print it", "type out {path}", "read {path}",
+                  "let me see the file {path}", "dump the text of {path}"],
+    "find_free_slots": ["what does my schedule look like on {date}", "do i have any openings on {date}",
+                        "find me an open time on {date}", "which times are available on {date}",
+                        "is there a gap in my day on {date}", "when can i fit a meeting on {date}"],
+    "list_capabilities": ["what are you capable of", "tell me what you can help with", "show me your features",
+                          "what commands do you support", "what tools do you have", "give me a list of things you do",
+                          "how can you help me", "show help"],
+    "flip_coin": ["toss a coin", "let's flip a coin", "heads or tails?", "flip it", "coin toss please",
+                  "decide with a coin"],
+    "list_files": ["show me everything in the workspace", "what documents do i have", "list my files",
+                   "which files exist", "display the file list", "what's in my folder"],
+    "crawl": ["crawl {url}", "spider the website {url} up to {n} pages", "scan the whole site at {url}",
+              "follow the links from {url} {d} levels", "index {url} recursively"],
+    "list_events": ["what's next on my agenda", "do i have meetings today", "show my upcoming appointments",
+                    "what's scheduled this week", "read out my calendar", "what classes and events are coming"],
+    "search_notes": ["look through my notes about {topic}", "which notes mention {topic}", "find what i noted on {topic}",
+                     "retrieve my notes on {topic}", "notes about {topic}"],
+    "add_task": ["put {title} on my todo list", "i should {title}", "remind me to {title} later", "add {title} to my todo",
+                 "queue up a task: {title}", "todo {title}"],
+    "now": ["what's the time right now", "tell me the current date", "what is today", "time please", "what date is it"],
+    "needs_model": ["write a blog post about {topic}", "generate a python script that renames files",
+                    "translate this paragraph into german", "invent a story for my kids", "write a haiku",
+                    "help me brainstorm a startup idea", "draw me a logo", "proofread my essay",
+                    "rewrite this sentence to sound formal", "write unit tests for my function",
+                    "explain this code line by line", "make me a workout plan"],
+}
+for _t, _extra in MORE_EN.items():
+    SPECS[_t][0].extend(_extra)
+
+
+def _lang_specs() -> dict:
+    """{lang: {tool: (templates, argmap)}} reusing the English arg maps for translated tools."""
+    out = {"en": SPECS}
+    for lang, tmap in i18n.LANG_TEMPLATES.items():
+        out[lang] = {t: (tpl, SPECS[t][1]) for t, tpl in tmap.items() if t in SPECS}
+    return out
+
+
 def _noise(template: str, rng: random.Random) -> str:
-    """Case/typo noise on the template words only (never on slot values)."""
+    """Typo noise on template words only (never on slot values)."""
     parts = re.split(r"(\{[^}]*\})", template)
     out = []
     for p in parts:
-        if p.startswith("{") or len(p) < 5 or rng.random() > 0.15:
+        if p.startswith("{") or len(p) < 5 or rng.random() > 0.12:
             out.append(p)
             continue
         i = rng.randrange(1, len(p) - 2)
@@ -126,24 +248,40 @@ def _noise(template: str, rng: random.Random) -> str:
     return "".join(out)
 
 
-def generate(per_tool: int = 40, seed: int = 0, split: str = "all") -> list[dict]:
-    """Return examples: {phrase, tool, args, frame, weight}. frame = phrase with slot values removed."""
+def _pick(n: int, split: str) -> list[int]:
+    return [i for i in range(n) if split == "all" or (i % 4 == 3) == (split == "test")]
+
+
+def generate(per_tool: int = 40, seed: int = 0, split: str = "all", per_lang: int = 16,
+             langs: tuple = ()) -> list[dict]:
+    """Examples: {phrase, tool, args, frame, weight, lang, cap}. frame = phrase with slot values removed."""
     rng = random.Random(seed)
     out = []
-    for tool, (templates, argmap) in SPECS.items():
-        idx = [i for i in range(len(templates))
-               if split == "all" or (i % 4 == 3) == (split == "test")]
-        for k in range(per_tool):
-            t = templates[idx[k % len(idx)]]
-            f = _fields(rng)
-            noisy = _noise(t, rng)
-            pre, suf = rng.choice(PREFIXES), rng.choice(SUFFIXES)
-            phrase = pre + noisy.format(**f) + suf
-            frame = pre + re.sub(r"\{[^}]*\}", " ", noisy) + suf
-            args = {a: (fn(f) if fn else f[ph]) for a, (ph, fn) in argmap.items() if "{" + ph + "}" in t}
-            out.append({"phrase": phrase, "tool": tool, "args": args, "frame": frame, "weight": 1})
-    idx = [i for i in range(len(CHAT)) if split == "all" or (i % 4 == 3) == (split == "test")]
-    for k in range(per_tool):
-        c = CHAT[idx[k % len(idx)]]
-        out.append({"phrase": rng.choice(PREFIXES) + c, "tool": "chat", "args": {}, "frame": c, "weight": 1})
+    for lang, specs in _lang_specs().items():
+        if langs and lang not in langs:
+            continue
+        n_each = per_tool if lang == "en" else per_lang
+        pre = PREFIXES if lang == "en" else i18n.PREFIXES[lang]
+        suf = SUFFIXES if lang == "en" else i18n.SUFFIXES[lang]
+        for tool, (templates, argmap) in specs.items():
+            idx = _pick(len(templates), split)
+            for k in range(n_each):
+                t = templates[idx[k % len(idx)]]
+                f = _fields(rng, lang)
+                noisy = _noise(t, rng)
+                p, s = rng.choice(pre), rng.choice(suf)
+                phrase = p + noisy.format(**f) + s
+                frame = p + re.sub(r"\{[^}]*\}", " ", noisy) + s
+                args = {a: (fn(f) if fn else f[ph]) for a, (ph, fn) in argmap.items() if "{" + ph + "}" in t}
+                if tool == "add_event":
+                    args["kind"] = f["kind_c"] if "{kind}" in t else "event"
+                out.append({"phrase": phrase, "tool": tool, "args": args, "frame": frame, "weight": 1,
+                            "lang": lang, "cap": catalog.capability_of(tool)})
+        chat = CHAT[lang]
+        idx = _pick(len(chat), split)
+        for k in range(n_each):
+            c = chat[idx[k % len(idx)]]
+            p = rng.choice(pre)
+            out.append({"phrase": p + c, "tool": "chat", "args": {}, "frame": c, "weight": 1,
+                        "lang": lang, "cap": "chat"})
     return out

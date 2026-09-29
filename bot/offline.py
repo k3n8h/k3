@@ -32,6 +32,8 @@ def parse_grammar(text: str):
         return "learn_instruction", {"trigger": m.group(1), "action": m.group(2).strip()}
     if m := _TRAIN_ADD.match(t):
         return "add_training_example", {"phrase": m.group(1), "command": m.group(2).strip()}
+    if low in ("capabilities", "features", "skills"):
+        return "list_capabilities", {}
     if low == "train":
         return "train_model", {}
     if low == "train status":
@@ -103,6 +105,10 @@ def parse(text: str, depth: int = 0):
     if guess is None:
         return "__text__", HELP
     tool, args = guess["tool"], guess["args"]
+    if tool == "needs_model":
+        return "__text__", ("That's an open-ended generation task (writing, coding, translating, brainstorming, "
+                            "designing), which needs a language model. Set ANTHROPIC_API_KEY or BOT_BASE_URL "
+                            "(Ollama/OpenAI-compatible) to enable it. Offline I can research the topic instead.")
     if registry.is_destructive(tool):
         return "__text__", (f"That sounds like {tool}({args}), but {learner.NEVER_AUTORUN_HINT}. "
                             "Use the explicit command (e.g. `cancel event 3`) to confirm.")
