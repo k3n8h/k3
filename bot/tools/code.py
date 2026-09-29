@@ -15,7 +15,7 @@ def safe_path(rel: str) -> Path:
     return p
 
 
-@tool("Write a text file inside the workspace (creates parent dirs). Use for code, SVG/HTML designs, docs.")
+@tool("Write a text file inside the workspace (creates parent dirs). Use for code, SVG/HTML designs, docs.", sensitive=True)
 def write_file(path: str, content: str) -> str:
     p = safe_path(path)
     p.parent.mkdir(parents=True, exist_ok=True)
@@ -35,7 +35,7 @@ def list_files(path: str = ".") -> list:
 
 
 @tool("Run Python code in the workspace directory with a timeout. Returns stdout, stderr and exit code. "
-      "Not a security sandbox: only run code you would run yourself.")
+      "Not a security sandbox: only run code you would run yourself.", sensitive=True)
 def run_python(code: str, timeout: int = config.CODE_TIMEOUT_S) -> dict:
     try:
         r = subprocess.run([sys.executable, "-I", "-c", code], cwd=config.workspace(), capture_output=True,

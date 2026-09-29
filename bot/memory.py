@@ -4,7 +4,7 @@ import threading
 
 from bot import config
 
-_lock = threading.Lock()
+_lock = threading.RLock()  # connect() runs under it via db()
 _conn: sqlite3.Connection | None = None
 
 SCHEMA = """
@@ -22,6 +22,10 @@ CREATE TABLE IF NOT EXISTS mod_log(
   at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE IF NOT EXISTS lessons(
   id INTEGER PRIMARY KEY, trigger TEXT DEFAULT '', action TEXT NOT NULL);
+CREATE TABLE IF NOT EXISTS examples(
+  id INTEGER PRIMARY KEY, phrase TEXT NOT NULL, tool TEXT NOT NULL, args TEXT DEFAULT '{}',
+  source TEXT DEFAULT 'user', weight INTEGER DEFAULT 1, at TEXT DEFAULT CURRENT_TIMESTAMP);
+CREATE TABLE IF NOT EXISTS blocklist(word TEXT PRIMARY KEY);
 CREATE TABLE IF NOT EXISTS jobs(
   id INTEGER PRIMARY KEY, goal TEXT NOT NULL, run_at TEXT NOT NULL, done INTEGER DEFAULT 0,
   result TEXT DEFAULT '');
@@ -52,3 +56,22 @@ def execute(sql: str, params: tuple = ()) -> sqlite3.Cursor:
 def query(sql: str, params: tuple = ()) -> list[dict]:
     with _lock:
         return [dict(r) for r in db().execute(sql, params).fetchall()]
+
+
+import contextlib
+
+
+@contextlib.contextmanager
+def scratch():
+    """Temporarily use an empty in-memory database (e.g. for certification), then restore the real one."""
+    global _conn
+    with _lock:
+        saved = _conn
+        _conn = None
+        connect(":memory:")
+    try:
+        yield
+    finally:
+        with _lock:
+            _conn.close()
+            _conn = saved

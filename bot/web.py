@@ -20,36 +20,106 @@ def allow_private() -> bool:
     return os.environ.get("BOT_ALLOW_PRIVATE_NETS") == "1"
 
 
-def check_url(url: str) -> None:
-    """SSRF guard: http(s) only, and the host must not resolve to a private/loopback address."""
+def resolve_public(url: str) -> tuple[list[str], str]:
+    """SSRF guard. Returns ([vetted ips], hostname); every resolved address must be public.
+
+    fetch() connects only to these exact IPs, so the check and the connection can't disagree
+    (no DNS rebinding).
+    """
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.hostname:
         raise ValueError("only http(s) URLs are allowed")
-    if allow_private():
-        return
-    for info in socket.getaddrinfo(p.hostname, p.port or 80, proto=socket.IPPROTO_TCP):
+    infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    ips = []
+    for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        if not allow_private() and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                                    or ip.is_multicast or ip.is_unspecified):
             raise ValueError(f"blocked: {p.hostname} resolves to a non-public address")
+        if info[4][0] not in ips:
+            ips.append(info[4][0])
+    if not ips:
+        raise ValueError(f"could not resolve {p.hostname}")
+    return ips, p.hostname
+
+
+def _verify():
+    """TLS trust: the system store, or the CA bundle named by the usual environment variables."""
+    import ssl
+    ca = next((os.environ[v] for v in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE") if os.environ.get(v)), None)
+    return ssl.create_default_context(cafile=ca) if ca else True
+
+
+def _use_env_proxy() -> bool:
+    return os.environ.get("BOT_TRUST_PROXY_ENV") == "1"
+
+
+def _get_pinned(url: str, ip: str, host: str) -> tuple[httpx.Response, bytes]:
+    """One GET to `ip` with the original Host header and TLS SNI. A fresh client per attempt means no
+    connection is pooled across hostnames. Proxy environment variables are ignored on purpose (a proxy would
+    route by the IP we pinned and defeat the check) unless BOT_TRUST_PROXY_ENV=1, see fetch()."""
+    try:
+        p = urlparse(url)
+        port = p.port
+    except ValueError:
+        raise ValueError(f"invalid URL: {url[:100]}") from None
+    netloc = f"[{ip}]" if ":" in ip else ip
+    if port:
+        netloc += f":{port}"
+    host_header = f"[{host}]" if ":" in host else host
+    if port:
+        host_header += f":{port}"
+    with httpx.Client(timeout=20, trust_env=False, verify=_verify()) as c:
+        with c.stream("GET", p._replace(netloc=netloc).geturl(),
+                      headers={"User-Agent": UA, "Host": host_header}, extensions={"sni_hostname": host}) as r:
+            if r.is_redirect:
+                return r, b""
+            r.raise_for_status()
+            data = b""
+            for chunk in r.iter_bytes():
+                data += chunk
+                if len(data) > MAX_BYTES:
+                    break
+            return r, data[:MAX_BYTES]
+
+
+def _get_via_env_proxy(url: str) -> tuple[httpx.Response, bytes]:
+    """Opt-in for hosts that must egress through a proxy: the proxy resolves DNS itself, so we can only run the
+    address check beforehand (best effort, not pinned)."""
+    with httpx.Client(timeout=20, trust_env=True, headers={"User-Agent": UA}) as c:
+        with c.stream("GET", url) as r:
+            if r.is_redirect:
+                return r, b""
+            r.raise_for_status()
+            data = b""
+            for chunk in r.iter_bytes():
+                data += chunk
+                if len(data) > MAX_BYTES:
+                    break
+            return r, data[:MAX_BYTES]
 
 
 def fetch(url: str, max_redirects: int = 5) -> tuple[str, str, str]:
-    """Return (final_url, content_type, text). Redirects are followed manually so each hop is checked."""
-    with httpx.Client(timeout=20, headers={"User-Agent": UA}) as c:
-        for _ in range(max_redirects + 1):
-            check_url(url)
-            with c.stream("GET", url) as r:
-                if r.is_redirect:
-                    url = urljoin(url, r.headers["location"])
-                    continue
-                r.raise_for_status()
-                data = b""
-                for chunk in r.iter_bytes():
-                    data += chunk
-                    if len(data) > MAX_BYTES:
-                        break
-                ctype = r.headers.get("content-type", "")
-                return url, ctype, data[:MAX_BYTES].decode(r.encoding or "utf-8", errors="replace")
+    """Return (final_url, content_type, text). Redirects are followed manually so each hop is re-checked,
+    and each request goes only to addresses that passed the check (trying them in order)."""
+    for _ in range(max_redirects + 1):
+        ips, host = resolve_public(url)
+        if _use_env_proxy():
+            r, data = _get_via_env_proxy(url)
+        else:
+            r, last = None, None
+            for ip in ips:
+                try:
+                    r, data = _get_pinned(url, ip, host)
+                    break
+                except httpx.TransportError as e:      # reset, TLS failure, timeout...: try the next vetted address
+                    last = e
+            if r is None:
+                raise last
+        if r.is_redirect:
+            url = urljoin(url, r.headers["location"])
+            continue
+        return url, r.headers.get("content-type", ""), data.decode(r.encoding or "utf-8", errors="replace")
     raise ValueError("too many redirects")
 
 

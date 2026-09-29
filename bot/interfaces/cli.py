@@ -22,8 +22,10 @@ def handle_slash(cmd: str, agent: Agent) -> bool:
     elif cmd == "/tools":
         for d in registry.definitions():
             console.print(f"[cyan]{d['name']}[/] - {d['description']}")
+    elif cmd == "/train":
+        console.print(registry.call("train_model", {}))
     elif cmd == "/help":
-        console.print("/tools  /clear  /quit  - anything else is sent to the bot")
+        console.print("/tools  /train  /clear  /quit  - anything else is sent to the bot")
     else:
         return False
     return True

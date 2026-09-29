@@ -4,13 +4,17 @@ import re
 from bot import memory
 from bot.registry import tool
 
-DEFAULT_BLOCKLIST = {"fuck", "shit", "bitch", "asshole", "cunt"}
-_blocklist: set[str] = set(DEFAULT_BLOCKLIST)
+DEFAULT_BLOCKLIST = frozenset({"fuck", "shit", "bitch", "asshole", "cunt"})
+_WORD = re.compile(r"[^\W_]+(?:'[^\W_]+)?")
+
+
+def blocklist() -> set:
+    """Built-in words plus the ones added by the user (persisted in the database, so they survive restarts)."""
+    return set(DEFAULT_BLOCKLIST) | {r["word"] for r in memory.query("SELECT word FROM blocklist")}
 
 
 def check_text(text: str) -> list[str]:
-    words = set(re.findall(r"[a-z']+", text.lower()))
-    return sorted(words & _blocklist)
+    return sorted(set(_WORD.findall(text.lower())) & blocklist())
 
 
 @tool("Check text against the profanity blocklist. Returns flagged words.")
@@ -21,8 +25,11 @@ def moderate_text(text: str) -> dict:
 
 @tool("Add a word to the moderation blocklist.")
 def add_blocked_word(word: str) -> dict:
-    _blocklist.add(word.lower())
-    return {"blocklist_size": len(_blocklist)}
+    tokens = _WORD.findall(word.lower())
+    if len(tokens) != 1:
+        raise ValueError("give a single word to block")
+    memory.execute("INSERT OR IGNORE INTO blocklist(word) VALUES(?)", (tokens[0],))
+    return {"blocked": tokens[0], "blocklist_size": len(blocklist())}
 
 
 @tool("Record a moderation action (warn, mute, unmute) against a user name, with a reason.")

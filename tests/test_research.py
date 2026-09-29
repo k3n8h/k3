@@ -46,7 +46,7 @@ def test_ssrf_guard(monkeypatch):
     monkeypatch.delenv("BOT_ALLOW_PRIVATE_NETS", raising=False)
     for u in ("http://127.0.0.1/", "http://localhost:8080/", "file:///etc/passwd"):
         with pytest.raises(ValueError):
-            web.check_url(u)
+            web.resolve_public(u)
 
 
 def test_fetch_scrape_crawl(site):
