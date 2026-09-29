@@ -71,6 +71,8 @@ task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs
 
 ## Security model
 - **Destructive tools** (delete/cancel/reset) always ask for confirmation; the web UI and unattended jobs deny them.
+- The moderation blocklist is stored in the database (survives restarts); the web chat serializes turns; a failed model
+  call is reported and rolled back; conversation history is bounded.
 - **Sensitive tools** (`run_python`, `write_file`, `learn_instruction`, `schedule_job`, training imports) ask when a
   *model* chose the call, because text it read on the web could have steered it (prompt injection). In offline mode
   they run directly since your own words are the only input.
@@ -93,7 +95,7 @@ has a competency exam split into **dev** phrasings (part of the training curricu
 scratch database and writes [`docs/ROLE_CERTIFICATION.md`](docs/ROLE_CERTIFICATION.md) with per-skill results,
 language coverage and open items. Tests fail if a tool has no owning skill, a skill lacks exams, or results drop.
 
-Each role also runs an end-to-end **job scenario** (`bot/training/scenarios.py`): a multi-step workflow with the real
+Each role also runs an end-to-end **job scenario** (`bot/training/scenarios.py`; run in an isolated subprocess when you ask the bot for `roles`): a multi-step workflow with the real
 tools in a scratch database and workspace (book, detect a double booking, refuse a cancel; add/complete tasks; write a
 CSV then describe, filter and chart it; crawl a local site honoring robots.txt; warn, mute and audit a user, some steps
 in other languages). Tests include negative controls that break each role's tool and require its scenario to fail.

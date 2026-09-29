@@ -106,4 +106,7 @@ def list_capabilities(area: str = "") -> str:
       "Optionally limit to one role id (e.g. research_analyst, data_analyst).")
 def certify_roles(role: str = "") -> str:
     from bot.training import certify
-    return certify.summary(certify.certify(role))
+    try:
+        return certify.summary(certify.certify_isolated(role))     # subprocess: never touches this session's state
+    except Exception as e:
+        return f"error: {type(e).__name__}: {e}"

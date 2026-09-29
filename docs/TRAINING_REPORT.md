@@ -1,81 +1,81 @@
 # Training report
 
-Trained on 5026 generated + 0 taught examples.
+Trained on 5248 generated + 0 taught examples.
 
 Measured on phrasings **held out from training** (every 4th template of each tool and language is never seen), so these numbers reflect generalization to new wording, not memorization.
 
 - Familiar phrasings (new slot values): **95%** intent accuracy
-- Unseen phrasings: **74%** intent, **63%** intent + arguments
-- Unseen phrasings that triggered a *wrong* action: **5.2%** (the rest were either right or safely abstained with help text)
+- Unseen phrasings: **76%** intent, **64%** intent + arguments
+- Unseen phrasings that triggered a *wrong* action: **5.5%** (the rest were either right or safely abstained with help text)
 
 ### By language
 
 | | intent accuracy |
 |---|---|
-| de | 76% |
+| de | 80% |
 | en | 81% |
-| es | 77% |
-| fr | 59% |
-| it | 77% |
-| pt | 74% |
-| ru | 58% |
+| es | 79% |
+| fr | 64% |
+| it | 79% |
+| pt | 80% |
+| ru | 60% |
 
 ### By capability
 
 | | intent accuracy |
 |---|---|
-| chat | 75% |
-| coding | 69% |
-| data | 90% |
+| chat | 68% |
+| coding | 68% |
+| data | 83% |
 | fun | 88% |
-| generative | 41% |
+| generative | 39% |
 | moderation | 78% |
-| organize | 69% |
-| research | 68% |
-| schedule | 69% |
-| teaching | 52% |
-| utilities | 88% |
+| organize | 71% |
+| research | 79% |
+| schedule | 71% |
+| teaching | 60% |
+| utilities | 90% |
 
 ### By tool / intent
 
 | | intent accuracy |
 |---|---|
-| add_blocked_word | 78% |
+| add_blocked_word | 79% |
 | add_event | 90% |
-| add_note | 79% |
-| add_task | 57% |
-| calculate | 96% |
+| add_note | 82% |
+| add_task | 60% |
+| calculate | 99% |
 | cancel_event | 100% |
-| certify_roles | 100% |
-| chat | 75% |
-| complete_task | 76% |
-| convert_units | 81% |
+| certify_roles | 88% |
+| chat | 68% |
+| complete_task | 81% |
+| convert_units | 82% |
 | crawl | 85% |
-| date_add | 97% |
-| describe_data | 80% |
-| find_free_slots | 82% |
-| flip_coin | 89% |
-| list_capabilities | 24% |
-| list_events | 32% |
-| list_files | 55% |
-| list_jobs | 78% |
+| date_add | 100% |
+| describe_data | 75% |
+| find_free_slots | 79% |
+| flip_coin | 93% |
+| list_capabilities | 21% |
+| list_events | 35% |
+| list_files | 50% |
+| list_jobs | 86% |
 | list_lessons | 100% |
-| list_tasks | 65% |
-| make_chart | 100% |
-| make_poll | 99% |
+| list_tasks | 62% |
+| make_chart | 85% |
+| make_poll | 98% |
 | moderate_text | 100% |
-| moderate_user | 90% |
-| needs_model | 41% |
-| now | 67% |
+| moderate_user | 83% |
+| needs_model | 39% |
+| now | 71% |
 | pick_random | 94% |
-| read_file | 82% |
-| research | 49% |
-| roll_dice | 85% |
+| read_file | 85% |
+| research | 67% |
+| roll_dice | 79% |
 | scramble_word | 72% |
 | scrape | 90% |
-| search_notes | 57% |
-| user_moderation_status | 59% |
-| web_fetch | 84% |
-| web_search | 61% |
+| search_notes | 62% |
+| user_moderation_status | 65% |
+| web_fetch | 87% |
+| web_search | 79% |
 
 _Misses are mostly abstentions: an unfamiliar wording falls through to help rather than guessing. Fix one with `wrong => <command>` or `train add "<phrase>" => <command>`._

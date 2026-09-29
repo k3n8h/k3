@@ -44,6 +44,10 @@ def render_report(r: dict) -> str:
 def main() -> None:
     args = [a for a in sys.argv[1:] if not a.startswith("--")]
     registry.load_all()
+    if "--certify-json" in sys.argv:
+        from bot.training import certify
+        print(json.dumps(certify.certify(args[0] if args else ""), default=list))
+        return
     if "--certify" in sys.argv:
         from bot.training import certify
         rep = certify.certify()

@@ -261,3 +261,16 @@ def test_date_and_id_extraction_regressions():
     assert g("fetch the page for me")["missing"] == ["url"]                    # un-prefixed form keeps asking
     r = g("grab pages from https://x.com")
     assert r is None or r["tool"] != "crawl"                                   # crawl is never auto-picked by pooling
+
+
+def test_lookup_family_prefers_web_unless_notes_are_mentioned_and_time_needs_a_time_word():
+    learner.fit_all()
+    g = learner.interpret
+    assert g("busca información sobre energía solar")["tool"] in ("research", "web_search")
+    assert g("busca en mis notas presupuesto")["tool"] == "search_notes"
+    assert g("did i write anything about the roof")["tool"] == "search_notes"
+    assert g("what's the weather like") is None                       # not a time question
+    for phrase in ("what time is it", "wie spät ist es", "che ore sono", "que horas são"):
+        assert g(phrase)["tool"] == "now", phrase
+    assert g("grafica ventas por región desde datos.csv")["args"] == {"path": "datos.csv", "y": "ventas", "x": "region"}
+    assert g("muestra un histograma de edad en usuarios.csv")["args"]["kind"] == "hist"

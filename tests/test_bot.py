@@ -88,3 +88,77 @@ def test_agent_loop_and_destructive_denied():
     agent = Agent(provider=FakeProvider([Reply(tool_calls=[ToolCall("2", "delete_note", {"id": 1})]), Reply("ok")]))
     agent.run("delete it")
     assert len(memory.query("SELECT * FROM notes")) == 1  # denied by default
+
+
+# ---- agent robustness
+def test_provider_failure_is_reported_and_history_stays_consistent():
+    from bot.agent import Agent
+    from bot.llm import Reply, ToolCall
+
+    class Flaky:
+        def __init__(self):
+            self.calls = 0
+
+        def complete(self, system, messages, tools, max_tokens=4096):
+            self.calls += 1
+            if self.calls == 2:                      # second call (after a tool result) fails mid-turn
+                raise ConnectionError("network down")
+            return Reply(tool_calls=[ToolCall("1", "flip_coin", {})]) if self.calls == 1 else Reply("ok")
+
+    a = Agent(provider=Flaky())
+    out = a.run("flip a coin")
+    assert "model call failed" in out and "ConnectionError" in out
+    assert a.messages == []                          # the half-finished turn was rolled back entirely
+    assert a.run("again") == "ok"                    # and the next turn works
+
+
+def test_history_is_bounded_and_never_splits_tool_pairs():
+    from bot.agent import Agent
+    from bot.llm import Reply, ToolCall
+
+    class Tooly:
+        def __init__(self):
+            self.n = 0
+
+        def complete(self, system, messages, tools, max_tokens=4096):
+            self.n += 1
+            last = messages[-1]["content"]
+            return Reply(tool_calls=[ToolCall(str(self.n), "flip_coin", {})]) if isinstance(last, str) else Reply("done")
+
+    a = Agent(provider=Tooly())
+    for i in range(80):
+        a.run(f"turn {i}")
+    assert len(a.messages) <= Agent.MAX_HISTORY + 4
+    assert a.messages[0]["role"] == "user" and isinstance(a.messages[0]["content"], str)
+    pending = set()
+    for m in a.messages:                             # every tool_result has its tool_use still present
+        if m["role"] == "assistant":
+            pending |= {b["id"] for b in m["content"] if b["type"] == "tool_use"}
+        elif not isinstance(m["content"], str):
+            assert {b["tool_use_id"] for b in m["content"]} <= pending
+
+
+def test_web_chat_serializes_concurrent_turns(monkeypatch):
+    import threading
+    import time
+    from fastapi.testclient import TestClient
+    from bot.interfaces import web
+    active, overlap = [0], [False]
+
+    class Slow:
+        def complete(self, system, messages, tools, max_tokens=4096):
+            from bot.llm import Reply
+            active[0] += 1
+            overlap[0] |= active[0] > 1
+            time.sleep(0.05)
+            active[0] -= 1
+            return Reply("hi")
+
+    from bot.agent import Agent
+    monkeypatch.setattr(web, "_agent", Agent(provider=Slow()))
+    c = TestClient(web.app)
+    threads = [threading.Thread(target=lambda: c.post("/chat", json={"message": "x"})) for _ in range(6)]
+    [t.start() for t in threads]
+    [t.join() for t in threads]
+    assert not overlap[0]
+    assert len([m for m in web._agent.messages if m["role"] == "user"]) == 6     # no lost or corrupted turns

@@ -139,3 +139,19 @@ def render_markdown(rep: dict) -> str:
 
 def summary(rep: dict) -> str:
     return "\n".join(f"- {r['name']}: {'CERTIFIED' if r['certified'] else 'needs work'} ({r['summary']})" for r in rep["roles"])
+
+
+def certify_isolated(role_id: str = "", timeout: int = 240) -> dict:
+    """Run certification in a fresh subprocess with its own BOT_HOME, so a live chat session's database, model,
+    environment and moderation state can't be touched (certify() swaps process-wide globals and is for CLI/tests)."""
+    import json
+    import subprocess
+    import sys
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        env = {**__import__("os").environ, "BOT_HOME": tmp}
+        cmd = [sys.executable, "-m", "bot.train", "--certify-json"] + ([role_id] if role_id else [])
+        r = subprocess.run(cmd, env=env, capture_output=True, text=True, timeout=timeout)
+    if r.returncode != 0:
+        raise RuntimeError(f"certification run failed: {(r.stderr or r.stdout)[-300:]}")
+    return json.loads(r.stdout[r.stdout.index("{"):])

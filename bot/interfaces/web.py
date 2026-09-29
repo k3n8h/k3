@@ -2,6 +2,8 @@
 
 Single-user local server. Destructive tools are denied in the web UI (no interactive confirm).
 """
+import threading
+
 from fastapi import FastAPI
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
@@ -14,6 +16,7 @@ app = FastAPI(title="K3 bot")
 app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver", "[::1]"]
                    + [h for h in __import__("os").environ.get("BOT_ALLOWED_HOSTS", "").split(",") if h])
 _agent: Agent | None = None
+_lock = threading.Lock()      # one shared conversation: serialize turns so concurrent requests can't interleave history
 
 
 def get_agent() -> Agent:
@@ -30,13 +33,15 @@ class ChatIn(BaseModel):
 @app.post("/chat")
 def chat(body: ChatIn) -> dict:
     tools_used: list[str] = []
-    reply = get_agent().run(body.message, on_tool=lambda n, a: tools_used.append(n))
+    with _lock:
+        reply = get_agent().run(body.message, on_tool=lambda n, a: tools_used.append(n))
     return {"reply": reply, "tools": tools_used}
 
 
 @app.post("/reset")
 def reset() -> dict:
-    get_agent().reset()
+    with _lock:
+        get_agent().reset()
     return {"ok": True}
 
 

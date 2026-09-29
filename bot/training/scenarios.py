@@ -4,6 +4,7 @@ Exams check that a request is *understood*; scenarios check that the role can ac
 workflows where later steps depend on the state earlier ones created. Every scenario runs through the same offline
 Agent a user talks to (with destructive confirmation denied), so refusals are part of what is verified.
 """
+import contextlib
 import json
 import os
 import tempfile
@@ -12,6 +13,25 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from bot import config, llm, memory
 from bot.agent import Agent
+
+
+@contextlib.contextmanager
+def env(**changes):
+    """Set (value) or unset (None) environment variables, restoring every prior value even on error."""
+    saved = {k: os.environ.get(k) for k in changes}
+    try:
+        for k, v in changes.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        yield
+    finally:
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
 
 
 class Session:
@@ -53,43 +73,47 @@ def research_analyst():
         def log_message(self, *a):
             pass
 
+    from bot import web
     srv = HTTPServer(("127.0.0.1", 0), H)
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    os.environ["BOT_ALLOW_PRIVATE_NETS"], os.environ["BOT_CRAWL_DELAY"] = "1", "0"
+    saved_robots = dict(web._robots)
+    web._robots.clear()
     try:
-        from bot import web
-        web._robots.clear()
         base, s = f"http://127.0.0.1:{srv.server_port}", Session()
-        page = s.data(f"fetch {base}/")
-        _need(isinstance(page, dict) and page["title"] == "Home" and "alpha" in page["text"], "read a page")
-        _need(s.data(f"scrape {base}/ p.x") == ["alpha"], "scrape by CSS selector")
-        crawl = s.data(f"crawl {base}/ depth 1")
-        urls = {p["url"]: p for p in crawl["results"]}
-        _need(f"{base}/a" in urls and "skipped" in urls.get(f"{base}/hidden", {}), "crawl follows links and honors robots.txt")
-        os.environ.pop("BOT_ALLOW_PRIVATE_NETS")                 # the local test server needed it; the guard must be back on
-        blocked = s.say("fetch http://10.0.0.5/").lower()
-        os.environ["BOT_ALLOW_PRIVATE_NETS"] = "1"
-        _need("error" in blocked and "non-public" in blocked, f"refuses private addresses: {blocked[:80]}")
-        _need(s.data(f"abre {base}/a")["title"] == "A", "reads pages when asked in Spanish")
+        with env(BOT_ALLOW_PRIVATE_NETS="1", BOT_CRAWL_DELAY="0", BOT_TRUST_PROXY_ENV=None):
+            page = s.data(f"fetch {base}/")
+            _need(isinstance(page, dict) and page["title"] == "Home" and "alpha" in page["text"], "read a page")
+            _need(s.data(f"scrape {base}/ p.x") == ["alpha"], "scrape by CSS selector")
+            crawl = s.data(f"crawl {base}/ depth 1")
+            urls = {p["url"]: p for p in crawl["results"]}
+            _need(f"{base}/a" in urls and "skipped" in urls.get(f"{base}/hidden", {}),
+                  "crawl follows links and honors robots.txt")
+            _need(s.data(f"abre {base}/a")["title"] == "A", "reads pages when asked in Spanish")
+        with env(BOT_ALLOW_PRIVATE_NETS=None, BOT_TRUST_PROXY_ENV=None):     # guard back on: private hosts refused
+            blocked = s.say("fetch http://10.0.0.5/").lower()
+            _need("error" in blocked and "non-public" in blocked, f"refuses private addresses: {blocked[:80]}")
     finally:
         srv.shutdown()
         srv.server_close()
-        os.environ.pop("BOT_ALLOW_PRIVATE_NETS", None)
+        web._robots.clear()
+        web._robots.update(saved_robots)
 
 
 def executive_assistant():
     s = Session()
-    _need('"created": true' in s.say("schedule dentist on 2031-05-06 at 09:00"), "book an appointment")
-    _need("conflict" in s.say("schedule yoga on 2031-05-06 at 09:30").lower(), "detect a double booking")
+    _need(s.data("schedule dentist on 2031-05-06 at 09:00")["created"] is True, "book an appointment")
+    clash = s.data("schedule yoga on 2031-05-06 at 09:30")
+    _need(clash["created"] is False and clash["conflicts"][0]["title"] == "dentist", "detect a double booking")
     rows = memory.query("SELECT title FROM events")
     _need([r["title"] for r in rows] == ["dentist"], "only the first booking exists")
     slots = s.data("when am i free on 2031-05-06")
     _need(slots and slots[0]["start"] == "2031-05-06T10:00", f"the booked 09:00 hour is not offered as free: {slots}")
     _need("declined" in s.say("cancel event 1"), "cancelling needs confirmation")
     _need(len(memory.query("SELECT * FROM events")) == 1, "guarded cancel did not run")
-    _need('"created": true' in s.say("planifie yoga le 2031-06-01 à 10:00"), "books from a French request")
-    job = s.say('schedule job "summarize the news" at 2031-05-07T08:00')
-    _need("id" in job and "summarize the news" in s.say("jobs"), "schedule and list a job")
+    _need(s.data("planifie yoga le 2031-06-01 à 10:00")["created"] is True, "books from a French request")
+    job = s.data('schedule job "summarize the news" at 2031-05-07T08:00')
+    _need(isinstance(job, dict) and isinstance(job["id"], int), f"schedule a job: {job}")
+    _need([j["goal"] for j in s.data("jobs")] == ["summarize the news"], "list scheduled jobs")
 
 
 def personal_organizer():
@@ -100,8 +124,9 @@ def personal_organizer():
     s.say("complete task 1")
     listing = s.say("tasks")
     _need("buy stamps" not in listing and "call the plumber" in listing, "completed tasks leave the open list")
-    _need("id" in s.say("añade una tarea pagar la factura") and "pagar la factura" in s.say("mis tareas"),
-          "manages tasks in Spanish")
+    added = s.data("añade una tarea pagar la factura")
+    _need(isinstance(added, dict) and isinstance(added["id"], int), f"adds a task from Spanish: {added}")
+    _need("pagar la factura" in [t["title"] for t in s.data("mis tareas")], "lists it back in Spanish")
     s.say("note groceries: eggs and rice")
     _need("groceries" in s.say("notes eggs"), "notes are searchable by body")
     _need("declined" in s.say("delete note 1"), "deleting a note needs confirmation")
@@ -138,9 +163,11 @@ def creative_writer_designer():
 
 def community_moderator():
     s = Session()
-    _need('"flagged": false' in s.say("moderate: hello everyone"), "clean text passes")
+    _need(s.data("moderate: hello everyone")["flagged"] is False, "clean text passes")
+    _need(s.data("moderate: this is a phishing link")["flagged"] is False, "not blocked before it is added")
     s.say("block the word phishing")
-    _need('"flagged": true' in s.say("moderate: this is a phishing link"), "newly blocked words are caught")
+    hit = s.data("moderate: this is a phishing link")
+    _need(hit["flagged"] is True and hit["words"] == ["phishing"], "newly blocked words are caught")
     s.say("advierte a alice por spam")
     _need(s.data("cuántas advertencias tiene alice")["status"]["warnings"] == 1, "moderates in Spanish")
     s.say("warn user bob for spamming")
@@ -153,10 +180,10 @@ def community_moderator():
 
 def utility_expert():
     s = Session()
-    _need(s.say("what's 15 times 4") == "60", "arithmetic")
-    _need(s.say("combien font 9 plus 4") == "13", "arithmetic in French")
-    _need("2030-02-14" in s.say("what date is 30 days after 2030-01-15"), "date math")
-    _need(abs(float(s.say("convert 10 km to miles")) - 6.2137) < 0.01, "unit conversion")
+    _need(s.data("what's 15 times 4") == 60, "arithmetic")
+    _need(s.data("combien font 9 plus 4") == 13, "arithmetic in French")
+    _need(s.data("what date is 30 days after 2030-01-15")["date"] == "2030-02-14", "date math")
+    _need(abs(s.data("convert 10 km to miles") - 6.2137) < 0.01, "unit conversion")
     _need("pizza" in s.say("create a poll team lunch: pizza, sushi, tacos"), "poll ballot")
     _need("error" in s.say("calc __import__('os')").lower(), "calculator refuses code")
 
@@ -165,9 +192,9 @@ def game_host():
     s = Session()
     rolls = s.data("roll 3d6")
     _need(len(rolls["rolls"]) == 3 and 3 <= rolls["total"] <= 18, "dice in range")
-    _need(s.say("flip a coin") in ("heads", "tails"), "coin")
-    _need(s.say("wirf eine münze") in ("heads", "tails"), "coin in German")
-    _need(s.say("pick one of tea, coffee, juice") in ("tea", "coffee", "juice"), "random pick from the given options")
+    _need(s.data("flip a coin") in ("heads", "tails"), "coin")
+    _need(s.data("wirf eine münze") in ("heads", "tails"), "coin in German")
+    _need(s.data("pick one of tea, coffee, juice") in ("tea", "coffee", "juice"), "random pick from the given options")
     word = s.data("scramble a word")
     _need(sorted(word["scrambled"]) == sorted(word["answer"]), "scramble is a real anagram")
 

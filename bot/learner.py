@@ -27,7 +27,7 @@ FAMILIARITY_POWER = 0.0
 MIN_DF = 3
 RUNNER_UP_MIN = 0.05
 # Read-only intents that overlap by nature; their probabilities are pooled before applying the threshold.
-FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape"}]   # single-shot and read-only; never crawl
+FAMILIES = [{"research", "web_search", "search_notes"}, {"web_fetch", "scrape"}]   # single-shot and read-only; never crawl
 MIN_CONFIDENCE = 0.9          # for tools that change state (add/write/moderate/crawl...)
 MIN_CONFIDENCE_APPEND = 0.8    # append-only, easily ignored: adding a task or a note
 APPEND_ONLY = {"add_task", "add_note"}
@@ -400,16 +400,16 @@ def _extract_chart(text: str, triggers) -> tuple[dict, list]:
     args: dict = {}
     if m := re.search(r"[\w./-]+\.(?:csv|xlsx|xls)\b", text, re.I):
         args["path"] = m.group(0)
-    kind = "hist" if re.search(r"\b(?:histogram|hist)\b", f) else "line" if re.search(r"\bline\b", f) else \
+    kind = "hist" if re.search(r"\b(?:histogram\w*|hist|histograma|histogramme|istogramma|гистограмм\w*)\b", f) else "line" if re.search(r"\bline\b", f) else \
         "bar" if re.search(r"\bbar\b", f) else None
     if kind:
         args["kind"] = kind
     xm, ym = re.search(r"\bx\s+(\w+)", f), re.search(r"\by\s+(\w+)", f)
     if xm and ym:
         args["x"], args["y"] = xm.group(1), ym.group(1)
-    elif m := re.search(r"\bhist(?:ogram)?\s+of\s+(\w+)", f):
+    elif m := re.search(r"\b(?:hist\w*|гистограмм\w*)\s+(?:of|de|von|di|для)?\s*(\w+)\s+(?:in|en|dans|aus|from|em|da|nel|в|from)\b", f):
         args["x"] = m.group(1)
-    elif m := re.search(r"\b(\w+)\s+(?:by|per|vs|versus|over|against)\s+(\w+)", f):
+    elif m := re.search(r"\b(\w+)\s+(?:by|per|vs|versus|over|against|por|par|nach|contro|contre|gegen|contra|по|против)\s+(\w+)", f):
         args["y"], args["x"] = m.group(1), m.group(2)
     return args, [r for r in ("path", "x") if r not in args]
 
@@ -627,6 +627,11 @@ def _retarget_status_question(text: str, cand: dict) -> dict:
     return cand
 
 
+_NOTE_CUE = re.compile(r"\bnotes?\b|\bnotas?\b|\bnotizen\b|\bnotiz\b|\banot\w*|\bnotat\w*|заметк\w*|\bwr(?:ite|itten|ote)\b|"
+                       r"\bnoted\b|\bsaved\b|\bjotted\b|\bremember(?:ed)?\b")
+# Tools whose intent is only meaningful with a specific kind of word: "what's the weather like" must not become "what time is it".
+_REQUIRED_CUE = {"now": re.compile(r"time|date|day|hour|clock|today|tonight|hora|fecha|dia|heure|jour|uhr|zeit|datum|data|ora|giorno|"
+                                   r"час|врем|числ|дат|день|spat|\bore\b|late")}
 _CRAWL_CUES = re.compile(r"crawl|spider|explor|index|walk|map|follow|depth|levels?|pages?|site|sitemap|rastre|recorr|profundidad|"
                          r"p[aá]ginas|parcour|profondeur|durchsuch|erkund|tiefe|seiten|percorr|scansion|esplor|pagine|обойд|исследуй|глубин|страниц")
 
@@ -680,6 +685,12 @@ def resolve(model: Model, text: str) -> Optional[dict]:
         if expr and re.fullmatch(r"[\d\.\(\)\s\+\-\*/%]+", expr) and \
                 any(t == "calculate" and p > 1e-6 for t, p in ranked[:6]):
             return {"tool": "calculate", "args": {"expression": expr}, "confidence": round(top_p, 3), "missing": []}
+    if top_t == "search_notes" and not _NOTE_CUE.search(fold(text)):
+        # 'busca información sobre X' has no mention of notes: the near-tie belongs to the web/research pair
+        alt = [(t, p) for t, p in ranked if t in ("research", "web_search")]
+        if alt and sum(p for t, p in ranked if t in FAMILIES[0]) >= MIN_CONFIDENCE_READONLY:
+            top_t = max(alt, key=lambda x: x[1])[0]
+            ranked = [(top_t, top_p)] + [(t, p) for t, p in ranked if t != top_t]
     need = MIN_CONFIDENCE_READONLY if top_t in READ_ONLY else MIN_CONFIDENCE_APPEND if top_t in APPEND_ONLY \
         else MIN_CONFIDENCE
     if top_p < need:
@@ -691,6 +702,8 @@ def resolve(model: Model, text: str) -> Optional[dict]:
     if top_t == "chat" or top_p < need:
         return _url_fallback(text, top_t)
     if top_t not in READ_ONLY and top_t not in PSEUDO and not _has_command_evidence(model, text, top_t):
+        return None
+    if top_t in _REQUIRED_CUE and not _REQUIRED_CUE[top_t].search(fold(text)):
         return None
     first = None
     for i, (t, p) in enumerate(ranked[:3]):

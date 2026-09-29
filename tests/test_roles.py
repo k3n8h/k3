@@ -88,9 +88,9 @@ def test_stress_exams_are_independent_of_training_data():
         assert len(items) >= 3, skill_id
 
 
-def test_trained_skills_cover_all_seven_languages_except_the_documented_two(report):
+def test_every_trained_skill_covers_all_seven_languages(report):
     thin = {s["id"] for r in report["roles"] for s in r["skills"] if s["mode"] == "trained" and len(s["languages"]) < 7}
-    assert thin <= {"chart", "explain_self"}, thin          # chart needs column names; certify_roles is English-only
+    assert not thin, thin
 
 
 def test_state_changing_guesses_need_command_evidence_and_bare_urls_are_not_crawls():
@@ -141,3 +141,69 @@ def test_scenarios_fail_when_the_roles_tools_are_broken(role_id, breakage, monke
     ok, detail = scenarios.run(role_id)
     assert not ok, f"{role_id} scenario still passed with a broken tool"
     assert detail and detail != "ok"
+
+
+# ---- isolation: certification must never leak into (or depend on) the caller's process state
+def test_moderation_scenario_does_not_leak_into_the_real_blocklist(tmp_path, monkeypatch):
+    from bot.tools import moderation
+    from bot.training import scenarios
+    monkeypatch.setenv("BOT_HOME", str(tmp_path))
+    memory.connect(str(tmp_path / "real.db"))
+    assert scenarios.run("community_moderator") == (True, "ok")
+    assert "phishing" not in moderation.blocklist()                    # scratch DB, nothing leaked
+    assert scenarios.run("community_moderator") == (True, "ok")        # repeatable: 'not blocked before added' holds again
+
+
+def test_blocklist_is_persistent_and_validates_input(tmp_path, monkeypatch):
+    from bot.tools import moderation
+    monkeypatch.setenv("BOT_HOME", str(tmp_path))
+    memory.connect(str(tmp_path / "a.db"))
+    registry.call("add_blocked_word", {"word": "Phishing"})
+    memory.connect(str(tmp_path / "a.db"))                              # "restart": new connection, same file
+    assert "phishing" in moderation.blocklist() and moderation.check_text("a phishing link") == ["phishing"]
+    assert registry.call("add_blocked_word", {"word": "two words"}).startswith("error")
+    assert registry.call("add_blocked_word", {"word": ""}).startswith("error")
+    assert moderation.check_text("ÑANDÚ shit") == ["shit"]              # non-ASCII text no longer confuses the filter
+
+
+def test_research_scenario_restores_environment_and_robots_cache(monkeypatch):
+    import os
+    from bot import web
+    from bot.training import scenarios
+    monkeypatch.setenv("BOT_CRAWL_DELAY", "2.5")
+    monkeypatch.delenv("BOT_ALLOW_PRIVATE_NETS", raising=False)
+    web._robots["https://real.example:443"] = None                      # a cached real-site entry must survive
+    try:
+        assert scenarios.run("research_analyst") == (True, "ok")
+        assert os.environ["BOT_CRAWL_DELAY"] == "2.5"
+        assert "BOT_ALLOW_PRIVATE_NETS" not in os.environ
+        assert "https://real.example:443" in web._robots
+        assert len(web._robots) == 1                                    # the scenario's own server entry is gone
+    finally:
+        web._robots.pop("https://real.example:443", None)
+
+
+def test_env_helper_restores_on_error():
+    import os
+    from bot.training.scenarios import env
+    os.environ["K3_T1"] = "a"
+    with pytest.raises(RuntimeError):
+        with env(K3_T1="b", K3_T2="c"):
+            assert os.environ["K3_T1"] == "b"
+            raise RuntimeError
+    assert os.environ["K3_T1"] == "a" and "K3_T2" not in os.environ
+    del os.environ["K3_T1"]
+
+
+def test_certify_roles_tool_runs_isolated_and_leaves_the_session_alone(tmp_path, monkeypatch):
+    monkeypatch.setenv("BOT_HOME", str(tmp_path))
+    memory.connect(str(tmp_path / "live.db"))
+    memory.execute("INSERT INTO tasks(title) VALUES('keep me')")
+    learner.LAST.update(phrase="x", tool="now", args={})
+    conn_before = memory._conn
+    out = registry.call("certify_roles", {"role": "game_host"})
+    assert "Game Host: CERTIFIED" in out, out
+    assert memory._conn is conn_before                                  # the live connection was never swapped
+    assert memory.query("SELECT title FROM tasks") == [{"title": "keep me"}]
+    assert learner.LAST == {"phrase": "x", "tool": "now", "args": {}}
+    assert registry.call("certify_roles", {"role": "no_such_role"}).count("CERTIFIED") == 0

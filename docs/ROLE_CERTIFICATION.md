@@ -4,7 +4,7 @@ Each expert role lists the skills it needs. A skill is **certified** when its to
 
 Modes: **trained** free-form intent; **command** explicit command form offline (a model can also call the tool); **guarded** destructive, never auto-run from a guess; **model** needs an LLM; **abstain** small talk.
 
-_Generated with `python -m bot.train --certify`; 5026 generated training examples._
+_Generated with `python -m bot.train --certify`; 5248 generated training examples._
 
 ## Research Analyst  -  CERTIFIED (5/5 skills certified, job scenario passed)
 
@@ -14,14 +14,14 @@ Job scenario (real tools, multi-step, scratch DB + workspace, some steps in othe
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
-| Find sources on the web | trained | web_search | en,es,fr,de,pt,it,ru | 2/2 | 4/4 | 4/4 | certified |
-| Research a topic with sources | trained | research | en,es,fr,de,pt,it,ru | 2/2 | 3/3 | 3/4 | certified |
+| Find sources on the web | trained | web_search | en,es,fr,de,pt,it,ru | 2/2 | 4/4 | 3/4 | certified |
+| Research a topic with sources | trained | research | en,es,fr,de,pt,it,ru | 2/2 | 3/3 | 4/4 | certified |
 | Read a web page | trained | web_fetch | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/4 | certified |
 | Extract data from a page (CSS selectors) | trained | scrape | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 | Map a website politely (robots.txt, delays) | trained | crawl | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 
 Open items:
-- **Research a topic with sources** [stress] `tell me what the literature says about intermittent fasting` expected `research|web_search`, got `__unknown__`
+- **Find sources on the web** [stress] `web results for python decorators pls` expected `web_search|research`, got `__unknown__`
 - **Read a web page** [stress] `bring me the contents of https://example.net/post/12` expected `web_fetch`, got `__text__`
 
 ## Executive Assistant (Scheduler)  -  CERTIFIED (6/6 skills certified, job scenario passed)
@@ -34,13 +34,14 @@ Job scenario (real tools, multi-step, scratch DB + workspace, some steps in othe
 |---|---|---|---|---|---|---|---|
 | Book classes, appointments and events | trained | add_event | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 4/4 | certified |
 | Review the calendar | trained | list_events | en,es,fr,de,pt,it,ru | 2/2 | 3/3 | 3/4 | certified |
-| Find free time | trained | find_free_slots | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
+| Find free time | trained | find_free_slots | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 2/3 | certified |
 | Cancel bookings (guarded) | guarded | cancel_event | - | 2/2 | 1/1 | 0/0 | certified |
 | Schedule unattended jobs | command | schedule_job | - | 2/2 | 1/1 | 0/0 | certified |
 | Review scheduled jobs | trained | list_jobs | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 
 Open items:
 - **Review the calendar** [stress] `qu'est-ce que j'ai au programme` expected `list_events`, got `__unknown__`
+- **Find free time** [stress] `do i have room for a meeting on 2032-03-04` expected `find_free_slots`, got `__unknown__`
 
 ## Personal Organizer  -  CERTIFIED (6/6 skills certified, job scenario passed)
 
@@ -70,7 +71,7 @@ Job scenario (real tools, multi-step, scratch DB + workspace, some steps in othe
 |---|---|---|---|---|---|---|---|
 | Profile a dataset | trained | describe_data | en,es,fr,de,pt,it,ru | 3/3 | 2/2 | 3/3 | certified |
 | Filter and aggregate | command | query_data | - | 2/2 | 1/1 | 0/0 | certified |
-| Chart data | trained | make_chart | en | 2/2 | 2/2 | 3/3 | certified |
+| Chart data | trained | make_chart | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 
 ## Developer Assistant  -  CERTIFIED (4/4 skills certified, job scenario passed)
 
@@ -160,7 +161,7 @@ Job scenario (real tools, multi-step, scratch DB + workspace, some steps in othe
 | Teach a phrasing | command | add_training_example, train_from_file | - | 2/2 | 2/2 | 0/0 | certified |
 | Take corrections and confirmations | command | mark_wrong, mark_good | - | 3/3 | 2/2 | 0/0 | certified |
 | Reset training (guarded) | guarded | reset_training | - | 1/1 | 1/1 | 0/0 | certified |
-| Explain capabilities and role readiness | trained | list_capabilities, certify_roles | en | 2/2 | 3/3 | 3/3 | certified |
+| Explain capabilities and role readiness | trained | list_capabilities, certify_roles | en,es,fr,de,pt,it,ru | 2/2 | 3/3 | 3/3 | certified |
 
 Open items:
 - **Recall what was learned** [stress] `list the things i told you to remember` expected `list_lessons`, got `__unknown__`
@@ -173,4 +174,7 @@ Job scenario (real tools, multi-step, scratch DB + workspace, some steps in othe
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
-| Abstain on chit-chat | abstain | - | - | 2/2 | 3/3 | 0/0 | certified |
+| Abstain on chit-chat | abstain | - | - | 2/2 | 2/3 | 0/0 | certified |
+
+Open items:
+- **Abstain on chit-chat** [holdout] `how are you today` expected `abstain`, got `now`

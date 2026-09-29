@@ -343,7 +343,10 @@ def _cross(verbs, objs, sep=" "):
 
 
 COMPOSED = {
-    "moderate_text": _cross(["is this", "does this look", "tell me whether this is", "check if this is"],
+    "moderate_text": _cross(["check", "scan", "test", "look", "detect", "screen"],
+                            ["for bad language: {off}", "for profanity: {off}", "for swearing: {off}",
+                             "for offensive words: {off}", "for rude words: {off}"])
+                     + _cross(["is this", "does this look", "tell me whether this is", "check if this is"],
                             ["rude: {off}", "offensive: {off}", "abusive: {off}", "toxic: {off}", "inappropriate: {off}"])
                      + _cross(["filter", "review", "screen", "vet", "moderate"],
                               ["this comment: {off}", "this message: {off}", "this post: {off}", "this reply: {off}"]),
