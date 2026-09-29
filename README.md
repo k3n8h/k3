@@ -78,5 +78,8 @@ task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs
 - `query_data` filters reject function calls, attributes and `@variables`; aggregations are whitelisted.
 - The web UI is single-user and only accepts `localhost`/`127.0.0.1` Host headers (extend with `BOT_ALLOWED_HOSTS`).
 - Fetching blocks private/loopback/link-local addresses, re-checks every redirect hop, and connects to the exact IP that
-  passed the check (TLS still validates the original hostname), so DNS rebinding cannot swap it.
+  passed the check (TLS still validates the original hostname; each vetted address is tried in turn), so DNS rebinding
+  cannot swap it. Proxy environment variables are ignored by default because a proxy would route by name and defeat the
+  pin; on a host that *must* egress through a proxy set `BOT_TRUST_PROXY_ENV=1` (the address check still runs, but the
+  proxy does its own DNS, so it is best-effort there). `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` are honored either way.
 - `run_python` is a timeout/cwd-restricted subprocess, **not** a sandbox: run the bot in a container if you connect a model.

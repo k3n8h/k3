@@ -25,7 +25,7 @@ TEMPERATURE = 10.0
 FAMILIARITY_POWER = 0.0
 RUNNER_UP_MIN = 0.05
 # Read-only intents that overlap by nature; their probabilities are pooled before applying the threshold.
-FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape", "crawl"}]
+FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape"}]   # single-shot and read-only; never crawl
 MIN_CONFIDENCE = 0.9
 TRIGGER_DF = 0.0   # frames exclude slot values, so any frame word is command syntax
 STOPS = {"please", "thanks", "thank", "you", "can", "could", "would", "hey", "k3", "me", "for", "the", "on", "about",
@@ -220,7 +220,7 @@ def _expression(text: str) -> Optional[str]:
         t = re.sub(rf"(?<![^\W\d_]){pat}(?![^\W\d_])", f" {sym} ", t)
     t = re.sub(r"(?<=\d)\s*x\s*(?=\d)", " * ", t)
     cands = [c.strip() for c in re.findall(r"[\d\.\(\)\s\+\-\*/%]{3,}", t)
-             if re.search(r"\d", c) and re.search(r"[\+\-\*/%]", c)]
+             if re.search(r"[\d\)]\s*[\+\-\*/%]\s*[\d\(]", c)]         # needs operand op operand
     return re.sub(r"\s+", " ", max(cands, key=len)) if cands else None
 
 
@@ -288,6 +288,26 @@ def _extract_event(text: str, triggers, now: Optional[datetime] = None) -> tuple
     return args, [r for r in ("kind", "title", "start", "end") if r not in args]
 
 
+_DAY_UNITS = r"(days?|dias?|jours?|tage?|giorni|дн\w*|weeks?|semanas?|semaines?|wochen?|settimane|недел\w*)"
+_BACKWARD = r"\b(before|ago|earlier|prior|minus|antes|avant|vor|meno|menos|moins|назад)\b"
+
+
+def _days(text: str) -> Optional[int]:
+    """Signed day offset: sums every 'N days / N weeks' quantity; months/years are ambiguous -> None."""
+    f = re.sub(r"\d{4}-\d{2}-\d{2}", " ", fold(text))
+    if re.search(r"\d+\s*(?:months?|years?|meses|mes|mois|monate?|anos?|mesi|anni|месяц\w*|лет|год\w*)", f):
+        return None
+    qty = re.findall(rf"(\d+)\s*{_DAY_UNITS}\b", f)
+    if qty:
+        total = sum(int(n) * (7 if re.match(r"(?:week|seman|wochen|settiman|недел)", u) else 1) for n, u in qty)
+    else:
+        nums = {int(n) for n in re.findall(r"\b\d{1,4}\b", f)}
+        if len(nums) != 1:
+            return None
+        total = nums.pop()
+    return -total if re.search(_BACKWARD, f) else total
+
+
 def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
     text = re.sub(r"\bk3\b", " ", text, flags=re.I)
     if tool == "add_event":
@@ -310,25 +330,15 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
             d = parse_when(text)["date"]
             v = d.isoformat() if d else None
         elif name == "days":
-            f = fold(text)
-            m = re.search(r"(\d+)\s*(?:days?|dias?|jours?|tage?|giorni|дн\w*)\b", f)
-            if m is None:                              # bare number: only if it is the single non-date number
-                nums = re.findall(r"\b\d{1,4}\b(?!-)", re.sub(r"\d{4}-\d{2}-\d{2}", " ", f))
-                m = re.match(r"(\d+)$", nums[0]) if len(set(nums)) == 1 else None
-            v = int(m.group(1)) if m else None
-            if re.search(r"\d+\s*(?:months?|years?)\b", f):
-                v = None                                 # variable-length units: ask instead of guessing
-            elif (w := re.search(r"(\d+)\s*weeks?\b", f)):
-                v = int(w.group(1)) * 7
-            if v is not None and re.search(rf"{v}\s*(?:days?|dias?|jours?|tage?|giorni)?\s*(?:before|ago|earlier|antes|avant|vor)\b", f):
-                v = -v
+            v = _days(text)
         elif name == "options" and spec["type"] == "array":
             body = free_text(text, triggers) or ""
             parts = [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
             v = parts if len(parts) >= 2 else None
         elif name == "id":
-            ids = set(re.findall(r"\b\d+\b", text))       # "tasks 3 and 4" is ambiguous: ask, don't guess
-            v = int(ids.pop()) if len(ids) == 1 else None
+            plain = re.sub(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b", " ", text)   # dates/times hold no ids
+            ids = {int(n) for n in re.findall(r"\b\d+\b", plain)}     # "tasks 3 and 4" is ambiguous: ask
+            v = ids.pop() if len(ids) == 1 else None
         elif name == "path":
             m = re.search(r"[\w./-]+\.(?:csv|xlsx|xls|json|md|txt|py|html|svg|png)\b", text, re.I)
             v = m.group(0) if m else None

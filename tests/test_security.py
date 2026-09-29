@@ -141,8 +141,14 @@ def _fake_dns(monkeypatch, ips):
     import socket
     from bot import web
     monkeypatch.setenv("BOT_ALLOW_PRIVATE_NETS", "1")
-    monkeypatch.setattr(web.socket, "getaddrinfo", lambda h, p, *a, **k: [
-        (socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, p)) for ip in ips])
+    real = socket.getaddrinfo
+
+    def fake(host, port, *a, **k):
+        if host.replace(".", "").isdigit():             # IP literals (the pinned connection) resolve as themselves
+            return real(host, port, *a, **k)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, port)) for ip in ips]
+
+    monkeypatch.setattr(web.socket, "getaddrinfo", fake)
 
 
 def test_fetch_falls_back_to_the_next_vetted_address(monkeypatch, server):
@@ -160,3 +166,94 @@ def test_host_header_never_carries_userinfo_and_proxy_env_is_ignored(monkeypatch
     _, _, body = web.fetch(f"http://user:secret@site.test:{server.server_port}/")
     assert f"host=site.test:{server.server_port}" in body and "secret" not in body
     assert all("secret" not in h for h in server.seen)
+
+
+def _raw_server(bind_ip, port, behavior):
+    import socket
+    import threading
+    srv = socket.socket()
+    srv.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    srv.bind((bind_ip, port))
+    srv.listen(5)
+
+    def loop():
+        while True:
+            try:
+                conn, _ = srv.accept()
+            except OSError:
+                return
+            behavior(conn)
+
+    threading.Thread(target=loop, daemon=True).start()
+    return srv
+
+
+def test_fetch_falls_back_after_a_reset_connection_not_only_connect_errors(monkeypatch, server):
+    from bot import web
+    _fake_dns(monkeypatch, ["127.0.0.2", "127.0.0.1"])
+    bad = _raw_server("127.0.0.2", server.server_port, lambda c: c.close())     # accepts, then resets
+    try:
+        _, _, body = web.fetch(f"http://flaky.test:{server.server_port}/")
+    finally:
+        bad.close()
+    assert "host=flaky.test" in body
+
+
+def test_all_addresses_failing_raises_a_clear_error(monkeypatch):
+    import httpx
+    from bot import web
+    _fake_dns(monkeypatch, ["127.0.0.2"])
+    with pytest.raises(httpx.TransportError):
+        web.fetch("http://nothing-listens.test:9/")
+
+
+def test_ipv6_host_header_keeps_brackets_and_bad_ports_are_clean_errors(monkeypatch):
+    import socket
+    from bot import web
+    monkeypatch.setenv("BOT_ALLOW_PRIVATE_NETS", "1")
+    captured = {}
+
+    class FakeClient:
+        def __init__(self, **kw):
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *a):
+            return False
+
+        def stream(self, method, url, headers=None, extensions=None):
+            captured.update(url=url, headers=headers, ext=extensions)
+            raise RuntimeError("stop")
+
+    monkeypatch.setattr(web.httpx, "Client", FakeClient)
+    with pytest.raises(RuntimeError):
+        web._get_pinned("http://[2001:db8::1]:8080/x", "2001:db8::1", "2001:db8::1")
+    assert captured["headers"]["Host"] == "[2001:db8::1]:8080" and "[2001:db8::1]:8080" in captured["url"]
+    with pytest.raises(ValueError, match="invalid URL"):
+        web._get_pinned("http://host:99999/", "1.2.3.4", "host")
+
+
+def test_proxy_env_is_opt_in_and_ca_bundle_env_is_honored(monkeypatch, tmp_path):
+    from bot import web
+    assert web._use_env_proxy() is False
+    monkeypatch.setenv("BOT_TRUST_PROXY_ENV", "1")
+    assert web._use_env_proxy() is True
+    used = []
+    monkeypatch.setattr(web, "_get_via_env_proxy", lambda url: used.append(url) or (_R(), b"<title>x</title>"))
+    monkeypatch.setattr(web, "resolve_public", lambda url: (["1.2.3.4"], "example.com"))
+    web.fetch("http://example.com/")
+    assert used == ["http://example.com/"]
+    import ssl
+    import certifi
+    for v in ("SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        monkeypatch.delenv(v, raising=False)
+    assert web._verify() is True                                # default: system trust store
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", certifi.where())   # a mandated CA bundle is honored explicitly
+    assert isinstance(web._verify(), ssl.SSLContext)
+
+class _R:
+    is_redirect = False
+    headers = {"content-type": "text/html"}
+    encoding = "utf-8"

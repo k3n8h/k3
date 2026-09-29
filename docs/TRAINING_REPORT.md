@@ -6,7 +6,7 @@ Measured on phrasings **held out from training** (every 4th template of each too
 
 - Familiar phrasings (new slot values): **93%** intent accuracy
 - Unseen phrasings: **65%** intent, **53%** intent + arguments
-- Unseen phrasings that triggered a *wrong* action: **3.6%** (the rest were either right or safely abstained with help text)
+- Unseen phrasings that triggered a *wrong* action: **3.4%** (the rest were either right or safely abstained with help text)
 
 ### By language
 
@@ -68,7 +68,7 @@ Measured on phrasings **held out from training** (every 4th template of each too
 | scramble_word | 72% |
 | scrape | 90% |
 | search_notes | 53% |
-| web_fetch | 27% |
+| web_fetch | 26% |
 | web_search | 57% |
 
 _Misses are mostly abstentions: an unfamiliar wording falls through to help rather than guessing. Fix one with `wrong => <command>` or `train add "<phrase>" => <command>`._

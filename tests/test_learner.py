@@ -245,3 +245,18 @@ def test_extraction_edge_cases_from_review():
                          ("añade 10 días a 2030-01-15", "date_add"), ("wähle zwischen tee, kaffee oder saft", "pick_random")):
         r = g(phrase)
         assert r and r["tool"] == tool, (phrase, r)
+
+
+def test_date_and_id_extraction_regressions():
+    learner.fit_all()
+    g = lambda p: learner.interpret(p)
+    assert g("what date is 2 weeks before 2030-01-15")["args"] == {"date": "2030-01-15", "days": -14}
+    assert g("2 weeks ago from 2030-01-15")["args"]["days"] == -14
+    assert g("minus 5 days from 2030-01-15")["tool"] == "date_add"            # not arithmetic
+    assert g("add 2 weeks and 3 days to 2030-01-15")["args"]["days"] == 17     # quantities add up
+    assert g("complete task 3 at 14:00")["args"] == {"id": 3}                  # times/dates hold no ids
+    assert g("mark task 03 done on 2030-01-15")["args"] == {"id": 3}
+    assert learner._expression("minus 5 days") is None and learner._expression("7 minus 5") == "7 - 5"
+    assert g("fetch the page for me")["missing"] == ["url"]                    # un-prefixed form keeps asking
+    r = g("grab pages from https://x.com")
+    assert r is None or r["tool"] != "crawl"                                   # crawl is never auto-picked by pooling
