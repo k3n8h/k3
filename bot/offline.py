@@ -42,7 +42,7 @@ def parse_grammar(text: str):
         return "reset_training", {}
     if m := re.match(r"train from\s+(\S+)$", t, re.I):
         return "train_from_file", {"path": m.group(1)}
-    if m := re.match(r"wrong\s*(?:=>|->|:)\s*(.+)$", t, re.I | re.S):
+    if m := re.match(r"(?:(?:wrong|that means|i meant)\s*(?:=>|->|:)|(?:that means|i meant)\s+)\s*(.+)$", t, re.I | re.S):
         return "mark_wrong", {"command": m.group(1).strip()}
     if low in ("good", "correct", "that was right"):
         return "mark_good", {}
@@ -126,6 +126,11 @@ class OfflineProvider(Provider):
             return Reply("\n".join(str(b["content"]) for b in last))
         name, args = parse(last)
         if name == "__text__":
+            if not parse_grammar(last):          # an unrecognized phrase: let `wrong => <command>` teach it
+                learner.LAST.clear()
+                learner.LAST.update(phrase=last, tool=None, args={})
+                args += "\n(Tell me what you meant with `wrong => <command>` and I'll learn it.)" \
+                    if args == HELP else ""
             return Reply(args)
         if name not in TRAIN_TOOLS:
             learner.LAST.clear()

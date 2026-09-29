@@ -81,6 +81,8 @@ def mark_good() -> dict:
     if not learner.LAST:
         raise ValueError("nothing to confirm yet")
     l = learner.LAST
+    if not l["tool"]:
+        raise ValueError("I didn't act on that one; tell me what you meant with `wrong => <command>`")
     learner.add_example(l["phrase"], l["tool"], l["args"], source="confirm", weight=2)
     learner.fit_all()
     return {"reinforced": l["phrase"]}

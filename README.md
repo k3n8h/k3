@@ -46,7 +46,7 @@ examples (`bot/training/seed.py`), examples you supply, and your live correction
 train                              # retrain; prints held-out accuracy on phrasings it hasn't seen
 train add "gimme a d20" => roll d20
 train from examples.jsonl          # workspace file: {"phrase","tool","args"} lines or phrase,tool,args CSV
-wrong => research solar panels     # correct the last answer: learns it, retrains, runs the fix
+wrong => research solar panels     # correct the last answer (or teach one I did not understand: "that means <command>")
 good                               # reinforce the last answer
 train status | train reset
 python -m bot.train [file]         # headless

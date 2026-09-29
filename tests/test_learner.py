@@ -182,3 +182,12 @@ def test_subject_topics_flow_into_research_slot():
         for form in (f"explain {topic}", f"tell me about {topic} please", f"i need to learn about {topic}"):
             args, missing = learner.extract_args("research", form, trig)
             assert args == {"question": topic} and not missing, (form, args)
+
+
+def test_teach_an_unrecognized_phrase_then_it_is_understood():
+    a = bot()
+    phrase = "yeet a cube"
+    assert "wrong =>" in a.run(phrase)                    # abstained, and says how to teach it
+    assert "error" in a.run("good")                       # nothing to confirm: it did not act
+    assert 'total' in a.run("that means roll 1d6")      # learns it and runs the command
+    assert learner.interpret(phrase)["tool"] == "roll_dice"
