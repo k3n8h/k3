@@ -225,6 +225,45 @@ for _t, _extra in MORE_EN.items():
     SPECS[_t][0].extend(_extra)
 
 
+# Second variety pass, targeted at the tools that scored lowest on held-out wordings.
+MORE_EN2 = {
+    "find_free_slots": ["are there any free hours on {date}", "what time slots are free on {date}", "check my availability on {date}",
+                        "when is my schedule empty on {date}", "show open times for {date}", "what's my availability for {date}",
+                        "can you find a gap on {date}", "find a time on {date} when nothing is booked"],
+    "list_files": ["list all files", "show the files in my workspace", "what have i saved", "ls workspace",
+                   "give me a directory listing", "which files are there", "files please", "show me my documents folder"],
+    "list_capabilities": ["what features do you offer", "how do you work", "what can i ask you", "what are you good at",
+                          "tell me about yourself and what you do", "capabilities", "what services do you provide",
+                          "what kinds of tasks can you handle"],
+    "web_fetch": ["fetch the page {url}", "show me what {url} contains", "load the webpage {url}", "read me {url}",
+                  "bring up {url}", "extract the text from {url}", "get the article at {url}", "download and read {url}"],
+    "describe_data": ["describe the spreadsheet {path}", "show me stats about {path}", "what columns does {path} have",
+                      "profile the dataset {path}", "give me a quick look at {path}", "analyze {path} for me",
+                      "how big is {path}", "give me the shape and types of {path}"],
+    "list_events": ["what's on my schedule", "show me my upcoming classes", "do i have anything planned", "what's on for today",
+                    "list my meetings", "what's booked this week", "tell me my appointments", "show my agenda"],
+    "search_notes": ["find my notes on {topic}", "search notes for {topic}", "what notes do i have about {topic}",
+                     "look up {topic} in my notes", "did i write anything about {topic}", "pull up my notes about {topic}",
+                     "check my notes for {topic}", "show notes mentioning {topic}"],
+    "add_event": ["schedule a {kind} for {etitle} on {date} at {time}", "reserve {date} at {time} for {etitle}",
+                  "add {etitle} to my calendar on {date} at {time}", "i need a {kind} called {etitle} on {date} at {time}",
+                  "please book {etitle} for {date} at {time}", "make a calendar entry {etitle} {date} {time}",
+                  "plan a {kind}: {etitle} on {date} at {time}", "{date} at {time}: {etitle}"],
+    "add_task": ["add a to-do: {title}", "please add {title} to my task list", "note that i have to {title}",
+                 "create a reminder to {title}", "add to my todos: {title}", "i need to remember to {title}",
+                 "put a task for {title}", "new todo item {title}"],
+    "web_search": ["can you google {topic}", "search the internet for {topic}", "find websites on {topic}",
+                   "lookup {topic} online", "what can i find about {topic} on the web", "search {topic} for me",
+                   "show me web results for {topic}", "search up {topic}"],
+    "research": ["can you research {topic}", "do a deep dive on {topic}", "give me a summary of {topic} with sources",
+                 "what should i know about {topic}", "help me understand {topic}", "write a fact sheet on {topic}",
+                 "find and read sources about {topic}", "study up on {topic}"],
+    "scrape": ["get all {sel} elements from {url}", "extract every {sel} from the page {url}", "scrape the {sel} tags at {url}"],
+}
+for _t, _extra in MORE_EN2.items():
+    SPECS[_t][0].extend(_extra)
+
+
 def _lang_specs() -> dict:
     """{lang: {tool: (templates, argmap)}} reusing the English arg maps for translated tools."""
     out = {"en": SPECS}

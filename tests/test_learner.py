@@ -51,7 +51,7 @@ def test_abstains_on_chitchat_and_gibberish():
 
 def test_missing_slot_asks_and_destructive_never_autoruns():
     a = bot()
-    assert "need: url" in a.run("please pull up the page for me").lower()
+    assert "need: url" in a.run("please fetch the page for me").lower()
     memory.execute("INSERT INTO events(kind,title,start,end) VALUES('event','x','2030-01-01T10:00','2030-01-01T11:00')")
     out = a.run("get rid of event 1")
     assert "destructive" in out
