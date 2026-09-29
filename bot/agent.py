@@ -20,7 +20,9 @@ class Agent:
 
     def _system(self) -> str:
         from bot.tools.learning import lessons_prompt
-        return self.system + lessons_prompt()
+        from bot import learner
+        q = next((m["content"] for m in reversed(self.messages) if m["role"] == "user" and isinstance(m["content"], str)), "")
+        return self.system + lessons_prompt() + (learner.hints(q) if q else "")
 
     def run(self, user_text: str, on_tool: Optional[Callable[[str, dict], None]] = None) -> str:
         """Run one user turn to completion; returns the final assistant text."""

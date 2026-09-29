@@ -35,3 +35,22 @@ single-user/local and denies destructive tools (no interactive confirmation).
 Offline mode understands a command grammar (`search`, `research`, `fetch`, `crawl`, `scrape`, `calc`, `add task`, ...)
 and taught shortcuts: `learn "morning news" => research top tech news`. Type any unknown text to see the help.
 Crawling honors robots.txt and `BOT_CRAWL_DELAY` (default 1s); fetches to private/loopback addresses are blocked.
+
+## Training (on-device, no API)
+Offline mode is backed by a small trained intent learner (`bot/learner.py`): a Naive Bayes classifier over
+word/bigram/char-trigram features plus schema-driven slot extraction, with an abstain class so chit-chat and
+gibberish fall through to help instead of triggering a tool. It is trained from three sources: synthetic
+examples (`bot/training/seed.py`), examples you supply, and your live corrections.
+
+```
+train                              # retrain; prints held-out accuracy on phrasings it hasn't seen
+train add "gimme a d20" => roll d20
+train from examples.jsonl          # workspace file: {"phrase","tool","args"} lines or phrase,tool,args CSV
+wrong => research solar panels     # correct the last answer: learns it, retrains, runs the fix
+good                               # reinforce the last answer
+train status | train reset
+python -m bot.train [file]         # headless
+```
+The learner never auto-runs destructive tools, asks for missing arguments instead of guessing, and with a real
+LLM configured, your taught examples are added to the prompt as few-shot hints. This is a small classifier, not
+an LLM: it generalizes to new phrasings only as far as its examples cover.

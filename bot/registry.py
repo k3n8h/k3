@@ -57,4 +57,4 @@ def call(name: str, args: dict) -> str:
 
 def load_all() -> None:
     from bot.tools import (autonomous, calendar, code, create, data, fun,  # noqa: F401
-                           learning, moderation, organize, research, utilities)
+                           learning, moderation, organize, research, training, utilities)
