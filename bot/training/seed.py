@@ -14,9 +14,14 @@ URLS = ["https://example.com", "https://news.ycombinator.com", "https://docs.pyt
         "https://arxiv.org/abs/1706.03762"]
 SELECTORS = ["h1", "p.x", "a.link", "div.price", "ul li", "h2", "span.title", "table tr"]
 DICE = ["2d6", "d20", "3d8", "1d10", "d6", "4d4"]
-TITLES = ["buy milk", "email the team", "finish the report", "call mom", "book flights", "water the plants",
+_ACTS = ["buy", "call", "email", "send", "finish", "book", "pay", "renew", "prepare", "fix", "clean", "write", "review",
+         "schedule", "return", "pick up", "order", "cancel", "update", "print"]
+_OBJS = ["the invoice", "milk", "mom", "the report", "flights", "the rent", "my passport", "the slides", "the bike",
+         "the kitchen", "a summary", "the contract", "the parcel", "groceries", "the dentist", "tax forms", "the landlord"]
+TITLES = [f"{a} {o}" for a in _ACTS for o in _OBJS][::4] + ["buy milk", "email the team", "finish the report", "call mom", "book flights", "water the plants",
           "renew passport", "prepare slides", "study for the exam", "pay the rent"]
-EVENT_TITLES = ["dentist", "math", "team sync", "yoga", "piano practice", "physics", "haircut", "project review"]
+EVENT_TITLES = ["chemistry", "spanish class", "board meeting", "gym session", "book club", "coffee with sam", "tax review",
+                "design workshop", "language exchange", "guitar practice", "vet visit", "sprint planning", "dentist", "math", "team sync", "yoga", "piano practice", "physics", "haircut", "project review"]
 BODIES = ["eggs, bread, butter", "ideas for the launch", "password hint is the dog's name",
           "meeting moved to friday", "read chapter three"]
 PATHS = ["sales.csv", "data/users.csv", "report.xlsx", "results/q3.csv", "notes.md", "script.py"]
@@ -32,15 +37,20 @@ KINDS = [("class", "class"), ("lecture", "class"), ("appointment", "appointment"
 OPTIONS = [("pizza, sushi, tacos", ["pizza", "sushi", "tacos"]), ("red or blue", ["red", "blue"]),
            ("tea, coffee or juice", ["tea", "coffee", "juice"]), ("cinema or bowling", ["cinema", "bowling"]),
            ("rock, paper, scissors", ["rock", "paper", "scissors"])]
-USERS = ["bob", "alice", "dave42", "mallory", "carol"]
+USERS = ["bob", "alice", "dave42", "mallory", "carol", "erin", "frank", "grace", "henry", "ivan", "judy", "kevin",
+         "laura", "mike", "nina", "oscar", "peggy", "quinn", "rob", "sara"]
 REASONS = ["spamming links", "rude language", "off topic posts", "posting spoilers"]
-MOD_VERBS = [("warn", "warn"), ("give a warning to", "warn"), ("issue a warning to", "warn"), ("mute", "mute"),
+MOD_VERBS = [("lift the mute on", "unmute"), ("restore the chat privileges of", "unmute"), ("release", "unmute"),
+             ("take the mute off", "unmute"), ("gag", "mute"), ("time out", "mute"), ("timeout", "mute"), ("warn", "warn"), ("give a warning to", "warn"), ("issue a warning to", "warn"), ("mute", "mute"),
              ("silence", "mute"), ("unmute", "unmute")]
-BLOCK_WORDS = ["spoiler", "crypto", "lottery", "casino", "giveaway"]
-POLL_QS = ["favorite fruit", "best movie", "team lunch spot", "weekend plan", "project name"]
-CHART_COLS = ["price", "sales", "region", "month", "age", "score"]
+BLOCK_WORDS = ["spoiler", "crypto", "lottery", "casino", "giveaway", "phishing", "scam", "spam", "clickbait", "viagra",
+               "gambling", "airdrop", "jackpot", "payday", "porn", "bitcoin", "pyramid", "coupon"]
+POLL_QS = ["office snacks", "best season", "game night", "team offsite", "lunch place", "movie night", "logo color",
+           "meeting day", "favorite fruit", "best movie", "team lunch spot", "weekend plan", "project name"]
+CHART_COLS = ["revenue", "team", "cost", "quarter", "year", "units", "rating", "price", "sales", "region", "month", "age", "score"]
 CHART_KINDS = [("bar", "bar"), ("line", "line"), ("histogram", "hist")]
-OFFENSIVE = ["what the hell is this shit", "you are an asshole", "this is bullshit", "fuck this"]
+OFFENSIVE = ["what the hell is this shit", "you are an asshole", "this is bullshit", "fuck this", "great post thanks",
+             "nice work team", "see you all tomorrow", "you are all idiots", "this thread is useless", "welcome everyone"]
 CHAT = {
     "en": ["tell me a joke", "how are you today", "hello", "hi there", "who are you", "what is the meaning of life",
            "thanks a lot", "good morning", "you are awesome", "what's your favorite color", "i'm feeling sad",
@@ -73,6 +83,7 @@ def _fields(rng: random.Random, lang: str = "en") -> dict:
     a, b = rng.sample(group, 2)
     surface = lambda canon: rng.choice([s for s, c in UNITS if c == canon])
     kw, kind = rng.choice(KINDS)
+    mv = rng.choice(i18n.MOD_VERBS.get(lang) or MOD_VERBS)
     loc = i18n.FILLERS.get(lang)
     local = {k: rng.choice(v) for k, v in loc.items()} if loc and rng.random() < 0.75 else {}
     return dict(topic=rng.choice(TOPICS), url=rng.choice(URLS), sel=rng.choice(SELECTORS), expr=et, expr_sym=es,
@@ -81,7 +92,7 @@ def _fields(rng: random.Random, lang: str = "en") -> dict:
                 value=rng.choice([5, 10, 12.5, 100, 3, 72, 20]), fu=surface(a), fu_c=a, tu=surface(b), tu_c=b,
                 date=rng.choice(DATES), time=rng.choice(TIMES), kind=kw, kind_c=kind,
                 days=rng.choice([3, 7, 10, 14, 30, 45, 90]), user=rng.choice(USERS), reason=rng.choice(REASONS),
-                verb=(v := rng.choice(MOD_VERBS))[0], verb_c=v[1], word=rng.choice(BLOCK_WORDS), q=rng.choice(POLL_QS),
+                verb=mv[0], verb_c=mv[1], word=rng.choice(BLOCK_WORDS), q=rng.choice(POLL_QS),
                 cx=(cc := rng.sample(CHART_COLS, 2))[0], cy=cc[1], ckind=(ck := rng.choice(CHART_KINDS))[0], ckind_c=ck[1], opts=(o := rng.choice(OPTIONS))[0], opts_l=o[1],
                 etitle=rng.choice(EVENT_TITLES), off=rng.choice(OFFENSIVE), mins=rng.choice([30, 45, 60, 90]),
                 ) | local
@@ -325,6 +336,64 @@ for _t, _extra in MORE_EN2.items():
     SPECS[_t][0].extend(_extra)
 
 
+# Compositional paraphrases: verb phrase x object phrase cross products give broad, sensible wording variety
+# (far more than hand-listing) without copying any exam phrase.
+def _cross(verbs, objs, sep=" "):
+    return [f"{v}{sep}{o}" for v in verbs for o in objs]
+
+
+COMPOSED = {
+    "moderate_text": _cross(["is this", "does this look", "tell me whether this is", "check if this is"],
+                            ["rude: {off}", "offensive: {off}", "abusive: {off}", "toxic: {off}", "inappropriate: {off}"])
+                     + _cross(["filter", "review", "screen", "vet", "moderate"],
+                              ["this comment: {off}", "this message: {off}", "this post: {off}", "this reply: {off}"]),
+    "web_search": _cross(["find", "look for", "hunt down", "search for", "dig up", "locate", "look up", "seek out", "get me"],
+                         ["links about {topic}", "pages on {topic}", "websites about {topic}", "articles regarding {topic}",
+                          "results for {topic}", "sites covering {topic}", "reviews of {topic}", "info online about {topic}"]),
+    "research": _cross(["write up", "give me an overview of", "brief me on", "summarize", "get me up to speed on",
+                        "explain", "dig into", "report on", "investigate"],
+                       ["{topic}", "{topic} with sources", "the history of {topic}", "everything about {topic}"]),
+    "list_events": _cross(["show me", "tell me", "list", "read out", "check", "give me"],
+                          ["my agenda", "my schedule", "my calendar", "my meetings", "my appointments",
+                           "my upcoming events", "my classes this week", "what i have planned"]),
+    "list_tasks": _cross(["show me", "tell me", "list", "read out", "check", "give me"],
+                         ["my tasks", "my to-do list", "my checklist", "my pending chores", "what's outstanding",
+                          "what i still need to do", "my open items"]),
+    "add_task": _cross(["add", "put", "note", "queue up", "log", "jot down"],
+                       ["a task to {title}", "a reminder to {title}", "{title} to my to-do list",
+                        "{title} on my checklist", "an item: {title}"])
+                + ["todo: {title}", "to do: {title}", "task: {title}", "remember to {title} tomorrow", "{title} by friday",
+                   "don't forget to {title} today", "i must {title}", "we need to {title}", "reminder: {title}"],
+    "add_note": _cross(["remember this", "save this", "note this down", "write this down", "keep this", "store this"],
+                       ["as {title}: {body}", "under {title}: {body}", "with the title {title}: {body}"]),
+    "list_files": _cross(["show", "list", "display", "what's in", "browse"],
+                         ["my files", "the workspace", "my folder", "my documents", "everything i've saved"]),
+    "read_file": ["show what is written in {path}", "what does {path} say", "what's written in {path}",
+                  "read out what's in {path}"] + _cross(["let me look at", "show me", "print", "display", "read out", "open up", "let me read"],
+                        ["{path}", "the file {path}", "the contents of {path}"]),
+    "list_lessons": _cross(["show", "list", "tell me", "read back"],
+                           ["the shortcuts you've stored", "what i've taught you", "the phrases you learned",
+                            "everything you remember", "your learned rules"]),
+    "add_blocked_word": _cross(["censor", "block", "ban", "filter", "blacklist", "disallow", "forbid"],
+                               ["the word {word}", "the term {word}", "{word} in chat", "{word} from messages"]),
+    "user_moderation_status": _cross(["show", "pull", "check", "give me", "what's"],
+                                     ["the moderation file on {user}", "{user}'s record", "{user}'s warnings",
+                                      "the mod history for {user}", "{user}'s moderation status"])
+                              + ["has {user} been warned before", "was {user} ever muted", "any strikes against {user}"],
+    "describe_data": _cross(["give me the lowdown on", "summarise", "summarize", "tell me about", "give me stats on",
+                             "break down", "give me an overview of", "analyse", "analyze"],
+                            ["{path}", "the file {path}", "the numbers in {path}", "the data inside {path}"]),
+    "find_free_slots": ["do i have time for a meeting on {date}", "is there room for an appointment on {date}",
+                        "any space for a call on {date}", "do i have room for something on {date}", "any availability on {date}", "is {date} open anywhere",
+                        "check whether {date} has open hours", "can i fit something in on {date}", "free time on {date}",
+                        "am i booked solid on {date}", "how does {date} look for openings"],
+    "certify_roles": ["how ready are the experts", "are your specialists trained", "role readiness", "are your roles certified",
+                      "which of your roles need more training"],
+}
+for _t, _extra in COMPOSED.items():
+    SPECS[_t][0].extend(_extra)
+
+
 def _lang_specs() -> dict:
     """{lang: {tool: (templates, argmap)}} reusing the English arg maps for translated tools."""
     out = {"en": SPECS}
@@ -396,13 +465,17 @@ def generate(per_tool: int = 40, seed: int = 0, split: str = "all", per_lang: in
         suf = SUFFIXES if lang == "en" else i18n.SUFFIXES[lang]
         for tool, (templates, argmap) in specs.items():
             idx = _pick(len(templates), split)
-            for k in range(n_each):
+            if not idx:                 # fewer than 4 templates: nothing to hold out for the test split
+                continue
+            for k in range(max(n_each, min(len(idx), 120))):
                 t = templates[idx[k % len(idx)]]
                 f = _fields(rng, lang)
                 noisy = _noise(t, rng)
                 p, s = rng.choice(pre), rng.choice(suf)
                 phrase = p + noisy.format(**f) + s
-                frame = p + re.sub(r"\{[^}]*\}", " ", noisy) + s
+                # verb/kind placeholders are command wording (not slot values), so they stay in the frame
+                keep = re.sub(r"\{(verb|kind|ckind)\}", lambda m: str(f[m.group(1)]), noisy)
+                frame = p + re.sub(r"\{[^}]*\}", " ", keep) + s
                 args = {a: (fn(f) if fn else f[ph]) for a, (ph, fn) in argmap.items() if "{" + ph + "}" in t}
                 if tool == "add_event":
                     args["kind"] = f["kind_c"] if "{kind}" in t else "event"

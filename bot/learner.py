@@ -22,12 +22,15 @@ PSEUDO = {"chat", "needs_model"}   # intents that are not tools
 DICE_RE = re.compile(r"\b\d*d\d+\b", re.I)
 ALPHA = 0.5
 MIN_KNOWN = 0.4       # share of a phrase's features that must have been seen in training
-TEMPERATURE = 10.0
+TEMPERATURE = 12.0
 FAMILIARITY_POWER = 0.0
+MIN_DF = 3
 RUNNER_UP_MIN = 0.05
 # Read-only intents that overlap by nature; their probabilities are pooled before applying the threshold.
 FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape"}]   # single-shot and read-only; never crawl
 MIN_CONFIDENCE = 0.9          # for tools that change state (add/write/moderate/crawl...)
+MIN_CONFIDENCE_APPEND = 0.8    # append-only, easily ignored: adding a task or a note
+APPEND_ONLY = {"add_task", "add_note"}
 MIN_CONFIDENCE_READONLY = 0.8  # a wrong guess on a read-only tool is harmless, so ask less of it
 READ_ONLY = {"web_search", "research", "web_fetch", "scrape", "list_events", "find_free_slots", "list_tasks",
              "search_notes", "list_files", "read_file", "describe_data", "moderate_text", "user_moderation_status",
@@ -37,7 +40,7 @@ TRIGGER_DF = 0.0   # frames exclude slot values, so any frame word is command sy
 STOPS = {"please", "thanks", "thank", "you", "can", "could", "would", "hey", "k3", "me", "for", "the", "on", "about",
          "of", "to", "up", "some", "all", "every", "my", "a", "an", "and", "at", "from", "in", "into", "is", "it",
          "that", "i", "need", "want", "just", "then", "mind", "would", "like", "id", "d", "asap", "right", "now",
-         "hey", "ok",
+         "hey", "ok", "before", "after", "ever", "already", "again", "yet", "still", "far", "ago", "pls", "so",
          # multilingual glue words
          "por", "favor", "gracias", "oye", "puedes", "quiero", "que", "una", "un", "el", "la", "los", "las", "de",
          "del", "para", "sobre", "mi", "mis", "s'il", "plait", "merci", "peux", "tu", "je", "voudrais", "dis",
@@ -90,6 +93,13 @@ def _strip_values(phrase: str, args: dict) -> str:
     return out
 
 
+class Triggers(list):
+    """Trigger words for a tool: `own` are words from that tool's command wording (safe to strip anywhere at the
+    edges); the rest are pooled from other tools and only stripped from the front, so a content word that happens
+    to be another tool's command word (e.g. 'review' in 'project review') survives at the end of a title."""
+    own: set = frozenset()
+
+
 class Model:
     def __init__(self):
         self.counts: dict[str, dict[str, int]] = {}
@@ -125,6 +135,11 @@ class Model:
                 value_df.update(set(WORD_RE.findall(fold(str(v)))))
         self.globals = sorted(w for w, k in frame_df.items() if k >= 2 and k > 2 * value_df[w])
         self.counts = {c: dict(v) for c, v in counts.items()}
+        if MIN_DF > 1:      # rare features are mostly one-off content words; they only add noise to confidence
+            total: Counter = Counter()
+            for v in self.counts.values():
+                total.update(v)
+            self.counts = {c: {f: n for f, n in v.items() if total[f] >= MIN_DF} for c, v in self.counts.items()}
         self.totals = {c: sum(v.values()) for c, v in self.counts.items()}
         self.vocab = {f for v in self.counts.values() for f in v}
         self.triggers = {c: sorted(t for t, k in df[c].items() if k / n_tool[c] > TRIGGER_DF) for c in n_tool}
@@ -151,8 +166,10 @@ class Model:
         r = self.rank(text)
         return r[0] if r else (None, 0.0)
 
-    def triggers_for(self, tool: str) -> list:
-        return list(self.triggers.get(tool, [])) + self.globals
+    def triggers_for(self, tool: str) -> "Triggers":
+        t = Triggers(list(self.triggers.get(tool, [])) + self.globals)
+        t.own = set(self.triggers.get(tool, []))
+        return t
 
     def to_json(self) -> str:
         return json.dumps({"counts": self.counts, "triggers": self.triggers, "globals": self.globals,
@@ -186,16 +203,30 @@ _LEAD_PREPS = {"about", "on", "regarding", "sobre", "sur", "uber", "su", "acerca
 _POLITE = STOPS
 
 
-def _trim(toks: list, drop) -> str:
+def _trim(toks: list, drop, tail_drop=None) -> str:
     def typo_of_command(tok: str) -> bool:      # "reserach", "scarpe": only the leading verb, same length
         e = _edge(tok)
         return len(e) >= 6 and any(len(d) == len(e) and e[0] == d[0] and sorted(e) == sorted(d) for d in drop)
     i, j = 0, len(toks)
     while i < j and (_edge(toks[i]) in drop or (i == 0 and typo_of_command(toks[i]))):
         i += 1
-    while j > i and _edge(toks[j - 1]) in drop:
+    tail = drop if tail_drop is None else tail_drop
+    while j > i and _edge(toks[j - 1]) in tail:
         j -= 1
     return " ".join(toks[i:j]).strip(" .,;:?!¿¡")
+
+
+_POLITE_TAIL = {"please", "pls", "thanks", "thank", "asap", "now", "me"}
+
+
+def _trim_tail(text: str) -> str:
+    """Only strip trailing politeness ('please', 'thanks', 'for me', 'right now'); content words stay intact."""
+    toks = text.split()
+    while toks and (_edge(toks[-1]) in _POLITE_TAIL or (len(toks) > 1 and _edge(toks[-1]) == "for" )):
+        toks.pop()
+    while len(toks) > 1 and _edge(toks[-1]) in ("for", "right"):
+        toks.pop()
+    return " ".join(toks).strip(" .,;:?!¿¡")
 
 
 def free_text(text: str, triggers) -> Optional[str]:
@@ -205,9 +236,10 @@ def free_text(text: str, triggers) -> Optional[str]:
     if m := re.search(r":(?:\s+|$)", t):          # "scan this for profanity: <content>"
         head, tail = t[:m.start()], t[m.end():]
         if tail.strip() and len(head.split()) <= 8:
-            return _trim(tail.split(), _POLITE) or None
+            return _trim_tail(tail) or None
     drop = STOPS | set(triggers)
-    out = _trim(t.split(), drop)
+    own = getattr(triggers, "own", None)
+    out = _trim(t.split(), drop, STOPS | set(own) if own is not None else None)
     toks = out.split()
     for k, tok in enumerate(toks[:6]):             # "... information on <topic>"
         if _edge(tok) in _LEAD_PREPS and k + 1 < len(toks):
@@ -284,8 +316,8 @@ def parse_when(text: str, now: Optional[datetime] = None) -> dict:
 def _extract_event(text: str, triggers, now: Optional[datetime] = None) -> tuple[dict, list]:
     w = parse_when(text, now)
     low = fold(text)
-    kind = "class" if re.search(r"\b(class|lecture|lesson|course)\b", low) else \
-        "appointment" if re.search(r"\b(appointment|appt)\b", low) else "event"
+    kind = "class" if re.search(r"\b(class|lecture|lesson|course|clase|classe|cours|kurs|unterricht|lezione|urok|занятие|урок)\b", low) else \
+        "appointment" if re.search(r"\b(appointment|appt|cita|rendez-vous|termin|consulta|appuntamento|встреча)\b", low) else "event"
     args = {"kind": kind}
     if title := free_text(w["rest"], triggers):
         title = re.sub(r"^(?:class|lecture|lesson|course|appointment|appt|meeting|event)\s+", "", title, flags=re.I) or title
@@ -301,17 +333,24 @@ _DAY_UNITS = r"(days?|dias?|jours?|tage?|giorni|дн\w*|weeks?|semanas?|semaines
 _BACKWARD = r"\b(before|ago|earlier|prior|minus|antes|avant|vor|meno|menos|moins|назад)\b"
 
 
+_SELECTOR_NOISE = {"elements", "element", "headings", "heading", "tags", "tag", "items", "nodes", "listed", "links",
+                   "entries", "there", "found"}
+_PRONOUNS = {"her", "him", "them", "he", "she", "they", "it", "me", "us", "user", "member", "usuario", "usuário",
+             "utilisateur", "l'utilisateur", "nutzer", "utente", "l'utente", "пользователя", "al", "den", "o"}
+
+
 def _split_options(body: str) -> list:
     return [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
 
 
 def _extract_mod_user(text: str, triggers) -> tuple[dict, list]:
     f = fold(text)
-    action = "unmute" if re.search(r"\bun-?mute", f) else "mute" if re.search(r"\b(?:mute|silence)\b", f) else \
-        "warn" if re.search(r"\b(?:warn|warning|strike)", f) else None
+    action = "unmute" if re.search(r"\bun-?mute|lift the mute|take the mute off|restore the chat|\brelease\b|speak again|talk again", f) else \
+        "mute" if re.search(r"\b(?:mute|silence|gag|time[- ]?out|silencia\w*|silencie|sourdine|muet|sperre|silenzia\w*|заглуш\w*)", f) else \
+        "warn" if re.search(r"\b(?:warn|warning|strike|advierte|advirta|avise|avertis|verwarne|avvisa|ammonisci|предупред\w*)", f) else None
     reason = None
     head = text
-    if m := re.search(r"(?:\s(?:for|because|since)\s|:\s*)(.+)$", text, re.I):
+    if m := re.search(r"(?:\s(?:for|because|since|por|pour|wegen|per|за)\s|:\s*)(.+)$", text, re.I):
         reason, head = m.group(1).strip(" .!"), text[:m.start()]
     words = set(triggers) | {"user", "member", "the", "warn", "warning", "mute", "silence", "unmute", "issue", "give",
                              "please", "to"}
@@ -319,24 +358,37 @@ def _extract_mod_user(text: str, triggers) -> tuple[dict, list]:
     args: dict = {}
     if action:
         args["action"] = action
-    if left:
-        args["user"] = left.split()[-1].strip("'\"")
+    all_toks = [t.strip("'\"") for t in left.split()]
+    toks = [t for t in all_toks if t.lower() not in _PRONOUNS]
+    if len(toks) < len(all_toks) and all_toks:      # "mallory keeps spamming, warn her": 'her' points back at the first name
+        first = [t for t in all_toks[:1] if t.lower() not in _PRONOUNS and fold(t) not in STOPS | words]
+        toks = first or toks
+        if first:
+            args["user"] = first[0]
+            toks = []
+    if toks:
+        args["user"] = toks[-1]
     if reason:
         args["reason"] = reason
     return args, [r for r in ("user", "action") if r not in args]
 
 
 def _extract_poll(text: str, triggers) -> tuple[dict, list]:
-    m = re.search(r"\bwith options\b|\boptions\b|:", text, re.I)
+    m = re.search(r"\bwith options\b|\boptions\b|\bcon opciones\b|\bavec les options\b|\bmit optionen\b|\bcom opções\b|"
+                  r"\bcon opzioni\b|\bс вариантами\b|:", text, re.I)
     args: dict = {}
     if m:
         head, tail = text[:m.start()], text[m.end():]
-        opts = _split_options(_trim(tail.split(), _POLITE))
+        if "?" in tail and not re.search(r"\boptions\b", text, re.I):     # "poll: best season? summer or winter"
+            qpart, tail = tail.split("?", 1)
+            head = head + " " + qpart
+        opts = _split_options(_trim_tail(tail))
         if len(opts) >= 2:
             args["options"] = opts
     else:
         head = text
-    cut = re.search(r"\b(?:poll|vote)\b(?:\s+(?:about|on))?", head, re.I)      # drop the verb phrase up to 'poll'
+    cut = re.search(r"\b(?:poll|vote|encuesta|votación|sondage|vote|umfrage|abstimmung|enquete|votação|sondaggio|votazione|опрос|голосование)\b"
+                    r"(?:\s+(?:about|on|sobre|über|su|о))?", head, re.I)      # drop the verb phrase up to 'poll'
     q = free_text(head[cut.end():] if cut else head, triggers)
     if q:
         args["question"] = q
@@ -405,11 +457,26 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
         elif name == "days":
             v = _days(text)
         elif name == "options" and spec["type"] == "array":
-            body = free_text(text, triggers) or ""
+            cue = re.search(r"(?:\bbetween\b|\bfrom\b|\bamong\b|\bof\b|:)\s+(.+)$", text, re.I)
+            body = _trim_tail(cue.group(1)) if cue else (free_text(text, triggers) or "")
             parts = [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
             v = parts if len(parts) >= 2 else None
+        elif name == "selector":
+            toks = (free_text(text, triggers) or "").split()
+            while toks and _edge(toks[-1]) in _SELECTOR_NOISE:
+                toks.pop()
+            v = " ".join(toks) or None
+        elif name == "word":
+            cue = re.search(r"\b(?:word|term|palabra|mot|wort|palavra|parola|слово)\s+(\S+)", text, re.I)
+            if cue:
+                v = cue.group(1).strip("'\"?.,")
+            else:                                     # first token that isn't a command/filler word
+                skip = STOPS | set(triggers)
+                v = next((t.strip("'\"?.,") for t in text.split() if _edge(t) not in skip), None)
         elif name == "user":
-            v = (free_text(text, triggers) or "").split(" ")[-1].removesuffix("'s").strip("'\"?.") or None
+            toks = [t.removesuffix("'s").strip("'\"?.,") for t in (free_text(text, triggers) or "").split()]
+            toks = [t for t in toks if t and t.lower() not in _PRONOUNS]
+            v = toks[-1] if toks else None
         elif name == "id":
             plain = re.sub(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b", " ", text)   # dates/times hold no ids
             ids = {int(n) for n in re.findall(r"\b\d+\b", plain)}     # "tasks 3 and 4" is ambiguous: ask
@@ -418,10 +485,10 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
             m = re.search(r"[\w./-]+\.(?:csv|xlsx|xls|json|md|txt|py|html|svg|png)\b", text, re.I)
             v = m.group(0) if m else None
         elif name == "max_depth":
-            m = re.search(r"depth\s+(\d+)", text, re.I)
-            v = int(m.group(1)) if m else None
+            m = re.search(r"(?:depth|profundidad|profondeur|tiefe|profundidade|profondità|глубин\w*)\s+(\d+)|(\d+)\s*levels?", text, re.I)
+            v = int(m.group(1) or m.group(2)) if m else None
         elif name == "max_pages":
-            m = re.search(r"(?:max|limit)\s+(\d+)|(\d+)\s+pages", text, re.I)
+            m = re.search(r"(?:max|limit|hasta|jusqu'à|bis zu|até|fino a|до)\s+(\d+)|(\d+)\s+(?:pages|páginas|seiten|pagine|страниц\w*)", text, re.I)
             v = int(m.group(1) or m.group(2)) if m else None
         elif name == "value":
             v = float(num.group(0)) if num else None
@@ -441,7 +508,7 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
     if "body" in props and "title" in props:
         if ":" in text:
             head, body = text.split(":", 1)
-            title, body = free_text(head, triggers), _trim(body.split(), _POLITE)
+            title, body = free_text(head, triggers), _trim_tail(body)
         else:
             body = free_text(text, triggers)
             title = (body or "")[:30] or None
@@ -488,7 +555,7 @@ def _eval(model: Model, tests: list[dict]) -> dict:
         slot = ok and (tool in PSEUDO or (not r["missing"] and norm(r["args"]) == norm(e["args"])))
         acted += tool not in PSEUDO
         wrong += tool not in PSEUDO and not ok
-        wrong_mut += tool not in PSEUDO and not ok and tool not in READ_ONLY
+        wrong_mut += tool not in PSEUDO and not ok and tool not in READ_ONLY and tool not in APPEND_ONLY
         for kind, key in (("tool", e["tool"]), ("lang", e.get("lang", "?")), ("cap", e.get("cap", "?"))):
             g = groups[kind][key]
             g[0] += 1
@@ -548,6 +615,58 @@ def get_model() -> Model:
     return _cache[2]
 
 
+_PARTICIPLE = re.compile(r"\b(?:muted|silenced|warned|silenciado|silenciada|silenziato|silenziata|stummgeschaltet|verwarnt|"
+                         r"заглушен\w*|en sourdine|avertido|avvisato)\b")
+
+
+def _retarget_status_question(text: str, cand: dict) -> dict:
+    """'is bob muted' / 'está silenciado bob' ask about a state; only the imperative verb mutes."""
+    if cand["tool"] == "moderate_user" and _PARTICIPLE.search(fold(text)):
+        args, missing = extract_args("user_moderation_status", text, get_model().triggers_for("user_moderation_status"))
+        return {"tool": "user_moderation_status", "args": args, "confidence": cand["confidence"], "missing": missing}
+    return cand
+
+
+_CRAWL_CUES = re.compile(r"crawl|spider|explor|index|walk|map|follow|depth|levels?|pages?|site|sitemap|rastre|recorr|profundidad|"
+                         r"p[aá]ginas|parcour|profondeur|durchsuch|erkund|tiefe|seiten|percorr|scansion|esplor|pagine|обойд|исследуй|глубин|страниц")
+
+
+def _has_command_evidence(model: "Model", text: str, tool: str) -> bool:
+    """A state-changing action needs at least one word from that tool's own command wording (or a typo of one);
+    a statistical guess built only from character n-grams ('blah blah' -> add_blocked_word) is not enough."""
+    all_own = set(model.triggers.get(tool, []))
+    own = all_own - STOPS
+    toks = WORD_RE.findall(fold(text))
+    if any(t in own for t in toks):
+        return True
+    if len({t for t in toks if t in all_own}) >= 2:      # "i need to ...": filler words, but a real command frame
+        return True
+    if tool == "add_event" and re.search(r"\d{4}-\d{2}-\d{2}", text):
+        return True
+    return any(len(t) >= 5 and difflib.get_close_matches(t, own, n=1, cutoff=0.85) for t in toks)
+
+
+def _guard_crawl(text: str, cand: dict) -> dict:
+    """A bare URL request without any 'walk the site' wording is a page read, not a multi-page crawl."""
+    if cand["tool"] == "crawl" and not _CRAWL_CUES.search(fold(URL_RE.sub(" ", text))):
+        return {"tool": "web_fetch", "args": {"url": cand["args"].get("start_url", "")}, "confidence": cand["confidence"],
+                "missing": [] if cand["args"].get("start_url") else ["url"]}
+    return cand
+
+
+def _url_fallback(text: str, top_t: str) -> Optional[dict]:
+    """A message that carries a URL but was not confidently claimed by anything else (and isn't chit-chat about
+    something state-changing) is treated as 'read this page': read-only, so a wrong guess is harmless."""
+    m = URL_RE.search(text)
+    if m and top_t not in ("chat",) and top_t not in STATE_CHANGING_HINT:
+        return {"tool": "web_fetch", "args": {"url": m.group(0).rstrip(".,)")}, "confidence": 0.5, "missing": []}
+    return None
+
+
+STATE_CHANGING_HINT = {"add_task", "add_note", "add_event", "cancel_event", "moderate_user", "add_blocked_word",
+                       "schedule_job", "write_file", "complete_task", "learn_instruction"}
+
+
 def resolve(model: Model, text: str) -> Optional[dict]:
     """Pick the intent + arguments. If the top intent lacks required slots, a runner-up whose slots
     are all present wins (e.g. 'what is calculus' is not arithmetic). None = abstain."""
@@ -561,7 +680,8 @@ def resolve(model: Model, text: str) -> Optional[dict]:
         if expr and re.fullmatch(r"[\d\.\(\)\s\+\-\*/%]+", expr) and \
                 any(t == "calculate" and p > 1e-6 for t, p in ranked[:6]):
             return {"tool": "calculate", "args": {"expression": expr}, "confidence": round(top_p, 3), "missing": []}
-    need = MIN_CONFIDENCE_READONLY if top_t in READ_ONLY else MIN_CONFIDENCE
+    need = MIN_CONFIDENCE_READONLY if top_t in READ_ONLY else MIN_CONFIDENCE_APPEND if top_t in APPEND_ONLY \
+        else MIN_CONFIDENCE
     if top_p < need:
         for fam_set in FAMILIES:
             if top_t in fam_set:
@@ -569,6 +689,8 @@ def resolve(model: Model, text: str) -> Optional[dict]:
                 if fam >= need:
                     top_p = fam
     if top_t == "chat" or top_p < need:
+        return _url_fallback(text, top_t)
+    if top_t not in READ_ONLY and top_t not in PSEUDO and not _has_command_evidence(model, text, top_t):
         return None
     first = None
     for i, (t, p) in enumerate(ranked[:3]):
@@ -583,11 +705,15 @@ def resolve(model: Model, text: str) -> Optional[dict]:
         if t not in registry._TOOLS:
             continue
         args, missing = extract_args(t, text, model.triggers_for(t))
-        cand = {"tool": t, "args": args, "confidence": round(p, 3), "missing": missing}
+        cand = _guard_crawl(text, _retarget_status_question(text, {"tool": t, "args": args, "confidence": round(p, 3),
+                                                                   "missing": missing}))
         if i == 0:
             first = cand
         if not missing:
             return cand
+    if first and first["missing"] and first["tool"] in ("scrape",) and URL_RE.search(text):
+        return {"tool": "web_fetch", "args": {"url": URL_RE.search(text).group(0).rstrip(".,)")},
+                "confidence": first["confidence"], "missing": []}
     return first
 
 

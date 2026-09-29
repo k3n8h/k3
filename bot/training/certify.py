@@ -10,6 +10,7 @@ from bot.training import seed
 
 DEV_PASS = 0.75       # a skill is certified when dev >= 75% ...
 HOLDOUT_PASS = 0.60   # ... and holdout >= 60%
+STRESS_PASS = 0.60    # ... and the independent stress exam (different vocabulary/structure) >= 60%
 TRAINED_LANGS = ["en", "es", "fr", "de", "pt", "it", "ru"]
 
 
@@ -79,11 +80,20 @@ def certify(role_id: str = "") -> dict:
                     res[split][1] += 1
                     if not ok:
                         failures.append((split, phrase, expected, detail))
+                stress = [0, 0]
+                for phrase, expected, args in R.STRESS.get(sk.id, []):
+                    ok, detail = run_exam(phrase, expected, args)
+                    stress[0] += ok
+                    stress[1] += 1
+                    if not ok:
+                        failures.append(("s", phrase, expected, detail))
+                stress_rate = stress[0] / stress[1] if stress[1] else 1.0
                 dev = res["d"][0] / res["d"][1] if res["d"][1] else 0
                 hold = res["h"][0] / res["h"][1] if res["h"][1] else 0
-                status = "certified" if not problems and dev >= DEV_PASS and hold >= HOLDOUT_PASS else "needs work"
+                status = "certified" if (not problems and dev >= DEV_PASS and hold >= HOLDOUT_PASS
+                                         and stress_rate >= STRESS_PASS) else "needs work"
                 rr["skills"].append({"id": sk.id, "name": sk.name, "mode": sk.mode, "tools": sk.tools, "languages": langs,
-                                     "dev": res["d"], "holdout": res["h"], "problems": problems,
+                                     "dev": res["d"], "holdout": res["h"], "stress": stress, "problems": problems,
                                      "failures": failures, "status": status})
             n_ok = sum(s["status"] == "certified" for s in rr["skills"])
             rr["certified"] = n_ok == len(rr["skills"])
@@ -95,19 +105,22 @@ def certify(role_id: str = "") -> dict:
 def render_markdown(rep: dict) -> str:
     L = ["# Role certification", "",
          "Each expert role lists the skills it needs. A skill is **certified** when its tools exist with the right safety "
-         f"flags, it is trained, and its exam passes: dev phrasings >= {DEV_PASS:.0%} (used while improving the training "
-         f"data) and holdout phrasings >= {HOLDOUT_PASS:.0%} (never trained on). Exams run through the same offline path a "
+         f"flags, it is trained, and its exams pass: dev phrasings >= {DEV_PASS:.0%} (part of the training curriculum), "
+         f"holdout phrasings >= {HOLDOUT_PASS:.0%} (never trained on) and an independent **stress** exam >= {STRESS_PASS:.0%} "
+         "(deliberately different vocabulary and structure: indirect requests, typos, other languages; never trained on, "
+         "but failures were used to fix general extraction bugs and to write broader compositional paraphrases, so treat it "
+         "as an upper-ish estimate). Exams run through the same offline path a "
          "user hits (exact grammar, then the learner), against the shipped seed model.", "",
          "Modes: **trained** free-form intent; **command** explicit command form offline (a model can also call the tool); "
          "**guarded** destructive, never auto-run from a guess; **model** needs an LLM; **abstain** small talk.", "",
          f"_Generated with `python -m bot.train --certify`; {rep['trained_examples']} generated training examples._", ""]
     for r in rep["roles"]:
         L += [f"## {r['name']}  -  {'CERTIFIED' if r['certified'] else 'needs work'} ({r['summary']})", "", r["mission"], "",
-              "| Skill | Mode | Tools | Langs | Dev | Holdout | Status |", "|---|---|---|---|---|---|---|"]
+              "| Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |", "|---|---|---|---|---|---|---|---|"]
         for s in r["skills"]:
             langs = ",".join(s["languages"]) if s["languages"] else "-"
             L.append(f"| {s['name']} | {s['mode']} | {', '.join(s['tools']) or '-'} | {langs} | {s['dev'][0]}/{s['dev'][1]} | "
-                     f"{s['holdout'][0]}/{s['holdout'][1]} | {s['status']} |")
+                     f"{s['holdout'][0]}/{s['holdout'][1]} | {s['stress'][0]}/{s['stress'][1]} | {s['status']} |")
         bad = [(s["name"], s["problems"], s["failures"]) for s in r["skills"] if s["problems"] or s["failures"]]
         if bad:
             L += ["", "Open items:"]
@@ -115,7 +128,7 @@ def render_markdown(rep: dict) -> str:
                 for p in problems:
                     L.append(f"- **{name}**: {p}")
                 for split, phrase, expected, detail in failures:
-                    L.append(f"- **{name}** [{'dev' if split == 'd' else 'holdout'}] `{phrase}` expected `{expected}`, got `{detail}`")
+                    L.append(f"- **{name}** [{ {'d': 'dev', 'h': 'holdout', 's': 'stress'}[split] }] `{phrase}` expected `{expected}`, got `{detail}`")
         L.append("")
     return "\n".join(L)
 

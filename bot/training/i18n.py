@@ -321,8 +321,52 @@ NEW_INTENTS = {'es': {'complete_task': ['marca la tarea {id} como hecha',
                         'выбери одно из {opts}']}}
 
 
-def _merge_new_intents() -> None:
-    for lang, tools in NEW_INTENTS.items():
+# Moderation / poll / job intents in every trained language (imperative forms; warn and mute only).
+MOD_VERBS = {
+    "es": [("advierte a", "warn"), ("advierte al usuario", "warn"), ("silencia a", "mute"), ("silencia al usuario", "mute")],
+    "fr": [("avertis", "warn"), ("avertis l'utilisateur", "warn"), ("mets en sourdine", "mute"), ("rends muet", "mute")],
+    "de": [("verwarne", "warn"), ("verwarne den nutzer", "warn"), ("sperre", "mute"), ("sperre den nutzer", "mute")],
+    "pt": [("advirta", "warn"), ("avise o usuário", "warn"), ("silencie", "mute"), ("silencie o usuário", "mute")],
+    "it": [("avvisa", "warn"), ("ammonisci", "warn"), ("silenzia", "mute"), ("silenzia l'utente", "mute")],
+    "ru": [("предупреди", "warn"), ("предупреди пользователя", "warn"), ("заглуши", "mute"), ("заглуши пользователя", "mute")],
+}
+
+NEW_INTENTS_2 = {
+    "es": {"list_jobs": ["muestra los trabajos programados", "qué trabajos hay en cola", "lista mis tareas automáticas", "hay trabajos pendientes"],
+           "add_blocked_word": ["bloquea la palabra {word}", "prohíbe la palabra {word}", "añade {word} a la lista negra", "filtra la palabra {word}"],
+           "user_moderation_status": ["muestra las advertencias de {user}", "cuántas advertencias tiene {user}", "historial de moderación de {user}", "está silenciado {user}"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} por {reason}", "por favor {verb} {user}", "{verb} {user}: {reason}"],
+           "make_poll": ["crea una encuesta {q}: {opts}", "haz una encuesta sobre {q} con opciones {opts}", "encuesta {q}: {opts}", "inicia una votación {q}: {opts}"]},
+    "fr": {"list_jobs": ["montre les tâches planifiées", "quels travaux sont en attente", "liste mes jobs automatiques", "y a-t-il des travaux programmés"],
+           "add_blocked_word": ["bloque le mot {word}", "interdis le mot {word}", "ajoute {word} à la liste noire", "filtre le mot {word}"],
+           "user_moderation_status": ["montre les avertissements de {user}", "combien d'avertissements a {user}", "historique de modération de {user}", "{user} est-il en sourdine"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} pour {reason}", "s'il te plaît {verb} {user}", "{verb} {user} : {reason}"],
+           "make_poll": ["crée un sondage {q} : {opts}", "fais un sondage sur {q} avec les options {opts}", "sondage {q} : {opts}", "lance un vote {q} : {opts}"]},
+    "de": {"list_jobs": ["zeige geplante aufträge", "welche aufträge sind in der warteschlange", "liste meine automatischen jobs", "gibt es wartende aufträge"],
+           "add_blocked_word": ["blockiere das wort {word}", "verbiete das wort {word}", "setze {word} auf die sperrliste", "filtere das wort {word}"],
+           "user_moderation_status": ["zeige die verwarnungen von {user}", "wie viele verwarnungen hat {user}", "moderationsverlauf von {user}", "ist {user} stummgeschaltet"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} wegen {reason}", "bitte {verb} {user}", "{verb} {user}: {reason}"],
+           "make_poll": ["erstelle eine umfrage {q}: {opts}", "mach eine umfrage über {q} mit optionen {opts}", "umfrage {q}: {opts}", "starte eine abstimmung {q}: {opts}"]},
+    "pt": {"list_jobs": ["mostre os trabalhos agendados", "quais trabalhos estão na fila", "liste meus jobs automáticos", "há trabalhos pendentes"],
+           "add_blocked_word": ["bloqueie a palavra {word}", "proíba a palavra {word}", "adicione {word} à lista negra", "filtre a palavra {word}"],
+           "user_moderation_status": ["mostre os avisos de {user}", "quantos avisos {user} tem", "histórico de moderação de {user}", "{user} está silenciado"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} por {reason}", "por favor {verb} {user}", "{verb} {user}: {reason}"],
+           "make_poll": ["crie uma enquete {q}: {opts}", "faça uma enquete sobre {q} com opções {opts}", "enquete {q}: {opts}", "inicie uma votação {q}: {opts}"]},
+    "it": {"list_jobs": ["mostra i lavori pianificati", "quali lavori sono in coda", "elenca i miei job automatici", "ci sono lavori in attesa"],
+           "add_blocked_word": ["blocca la parola {word}", "vieta la parola {word}", "aggiungi {word} alla lista nera", "filtra la parola {word}"],
+           "user_moderation_status": ["mostra gli avvisi di {user}", "quanti avvisi ha {user}", "storico di moderazione di {user}", "{user} è silenziato"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} per {reason}", "per favore {verb} {user}", "{verb} {user}: {reason}"],
+           "make_poll": ["crea un sondaggio {q}: {opts}", "fai un sondaggio su {q} con opzioni {opts}", "sondaggio {q}: {opts}", "avvia una votazione {q}: {opts}"]},
+    "ru": {"list_jobs": ["покажи запланированные задания", "какие задания в очереди", "список моих автоматических заданий", "есть ли ожидающие задания"],
+           "add_blocked_word": ["заблокируй слово {word}", "запрети слово {word}", "добавь {word} в черный список", "отфильтруй слово {word}"],
+           "user_moderation_status": ["покажи предупреждения {user}", "сколько предупреждений у {user}", "история модерации {user}", "{user} заглушен"],
+           "moderate_user": ["{verb} {user}", "{verb} {user} за {reason}", "пожалуйста {verb} {user}", "{verb} {user}: {reason}"],
+           "make_poll": ["создай опрос {q}: {opts}", "сделай опрос о {q} с вариантами {opts}", "опрос {q}: {opts}", "запусти голосование {q}: {opts}"]},
+}
+
+
+def _merge_new_intents(table=None) -> None:
+    for lang, tools in (table or NEW_INTENTS).items():
         if lang not in LANG_TEMPLATES:
             raise KeyError(f"NEW_INTENTS has language {lang!r} that is missing from LANG_TEMPLATES")
         clash = set(tools) & set(LANG_TEMPLATES[lang])
@@ -332,3 +376,21 @@ def _merge_new_intents() -> None:
 
 
 _merge_new_intents()
+_merge_new_intents(NEW_INTENTS_2)
+
+# Everyday task idioms merged into the existing add_task lists.
+TASK_IDIOMS = {'es': ['hay que {title}', 'no olvides {title}', 'acuérdate de {title}'], 'fr': ['il faut {title}', "n'oublie pas de {title}", 'pense à {title}'], 'de': ['man muss {title}', 'vergiss nicht {title}', 'denk daran {title}'], 'pt': ['é preciso {title}', 'não esqueça de {title}', 'lembre-se de {title}'], 'it': ['bisogna {title}', 'non dimenticare di {title}', 'ricordati di {title}'], 'ru': ['надо {title}', 'не забудь {title}', 'нужно {title}']}
+for _l, _t in TASK_IDIOMS.items():
+    LANG_TEMPLATES[_l]["add_task"] = LANG_TEMPLATES[_l]["add_task"] + _t
+
+# find_free_slots in every trained language.
+FREE_SLOTS = {'es': ['cuándo estoy libre el {date}', 'tengo tiempo libre el {date}', 'hay huecos el {date}'], 'fr': ['quand suis-je libre le {date}', 'ai-je du temps libre le {date}', 'y a-t-il des créneaux le {date}'], 'de': ['wann bin ich am {date} frei', 'habe ich am {date} zeit', 'gibt es freie zeiten am {date}'], 'pt': ['quando estou livre em {date}', 'tenho tempo livre em {date}', 'há horários livres em {date}'], 'it': ['quando sono libero il {date}', 'ho tempo libero il {date}', 'ci sono orari liberi il {date}'], 'ru': ['когда я свободен {date}', 'есть ли свободное время {date}', 'свободные слоты на {date}']}
+for _l, _t in FREE_SLOTS.items():
+    LANG_TEMPLATES[_l]["find_free_slots"] = _t
+
+for _l, _t in {"es": "qué horas tengo libres el {date}", "fr": "quelles heures sont libres le {date}", "de": "welche zeiten sind am {date} frei", "pt": "que horas estão livres em {date}", "it": "quali orari sono liberi il {date}", "ru": "какие часы свободны {date}"}.items():
+    LANG_TEMPLATES[_l]["find_free_slots"] = LANG_TEMPLATES[_l]["find_free_slots"] + [_t]
+
+# Remaining role skills in every trained language (arguments such as URLs, paths and ISO dates are language-neutral).
+COVERAGE_FILL = {'es': {'list_files': ['muestra mis archivos', 'qué archivos tengo', 'lista el espacio de trabajo'], 'search_notes': ['busca en mis notas {topic}', 'notas sobre {topic}', 'qué anoté sobre {topic}'], 'list_lessons': ['qué has aprendido', 'muestra lo que te enseñé', 'qué recuerdas'], 'scramble_word': ['juguemos a palabras revueltas', 'dame un anagrama', 'acertijo de palabras'], 'describe_data': ['describe {path}', 'resume los datos de {path}', 'estadísticas de {path}'], 'read_file': ['muestra el archivo {path}', 'lee el archivo {path}', 'enséñame el contenido de {path}'], 'moderate_text': ['revisa este texto: {off}', '¿es ofensivo esto?: {off}', 'modera: {off}'], 'scrape': ['extrae {sel} de {url}', 'saca todos los {sel} en {url}', 'raspa {sel} de {url}'], 'crawl': ['rastrea {url}', 'explora el sitio {url}', 'recorre {url} hasta {n} páginas'], 'add_event': ['programa {etitle} el {date} a las {time}', 'agenda {etitle} para {date} {time}', 'reserva {etitle} el {date} a las {time}']}, 'fr': {'list_files': ['montre mes fichiers', 'quels fichiers ai-je', "liste l'espace de travail"], 'search_notes': ['cherche dans mes notes {topic}', 'notes sur {topic}', "qu'ai-je noté sur {topic}"], 'list_lessons': ["qu'as-tu appris", "montre ce que je t'ai appris", 'de quoi te souviens-tu'], 'scramble_word': ['jouons au mot mélangé', 'donne-moi une anagramme', 'énigme de mots'], 'describe_data': ['décris {path}', 'résume les données de {path}', 'statistiques de {path}'], 'read_file': ['montre le fichier {path}', 'lis le fichier {path}', 'affiche le contenu de {path}'], 'moderate_text': ['vérifie ce texte : {off}', 'est-ce offensant : {off}', 'modère : {off}'], 'scrape': ['extrais {sel} de {url}', 'récupère tous les {sel} sur {url}', 'scrape {sel} depuis {url}'], 'crawl': ['parcours {url}', 'explore le site {url}', "explore {url} jusqu'à {n} pages"], 'add_event': ['planifie {etitle} le {date} à {time}', 'programme {etitle} pour le {date} {time}', 'réserve {etitle} le {date} à {time}']}, 'de': {'list_files': ['zeige meine dateien', 'welche dateien habe ich', 'liste den arbeitsbereich'], 'search_notes': ['suche in meinen notizen {topic}', 'notizen über {topic}', 'was habe ich über {topic} notiert'], 'list_lessons': ['was hast du gelernt', 'zeige was ich dir beigebracht habe', 'woran erinnerst du dich'], 'scramble_word': ['spielen wir wörterraten', 'gib mir ein anagramm', 'worträtsel'], 'describe_data': ['beschreibe {path}', 'fasse die daten in {path} zusammen', 'statistiken zu {path}'], 'read_file': ['zeige die datei {path}', 'lies die datei {path}', 'zeig mir den inhalt von {path}'], 'moderate_text': ['prüfe diesen text: {off}', 'ist das beleidigend: {off}', 'moderiere: {off}'], 'scrape': ['extrahiere {sel} von {url}', 'hol alle {sel} auf {url}', 'scrape {sel} von {url}'], 'crawl': ['durchsuche {url}', 'erkunde die seite {url}', 'crawle {url} bis zu {n} seiten'], 'add_event': ['plane {etitle} am {date} um {time}', 'trage {etitle} für {date} {time} ein', 'buche {etitle} am {date} um {time}']}, 'pt': {'list_files': ['mostre meus arquivos', 'quais arquivos eu tenho', 'liste o espaço de trabalho'], 'search_notes': ['busque nas minhas notas {topic}', 'notas sobre {topic}', 'o que anotei sobre {topic}'], 'list_lessons': ['o que você aprendeu', 'mostre o que eu te ensinei', 'do que você se lembra'], 'scramble_word': ['vamos jogar palavras embaralhadas', 'me dê um anagrama', 'enigma de palavras'], 'describe_data': ['descreva {path}', 'resuma os dados de {path}', 'estatísticas de {path}'], 'read_file': ['mostre o arquivo {path}', 'leia o arquivo {path}', 'mostre o conteúdo de {path}'], 'moderate_text': ['verifique este texto: {off}', 'isto é ofensivo: {off}', 'modere: {off}'], 'scrape': ['extraia {sel} de {url}', 'pegue todos os {sel} em {url}', 'raspe {sel} de {url}'], 'crawl': ['rastreie {url}', 'explore o site {url}', 'percorra {url} até {n} páginas'], 'add_event': ['agende {etitle} em {date} às {time}', 'marque {etitle} para {date} {time}', 'reserve {etitle} em {date} às {time}']}, 'it': {'list_files': ['mostra i miei file', 'quali file ho', "elenca l'area di lavoro"], 'search_notes': ['cerca nelle mie note {topic}', 'note su {topic}', 'cosa ho annotato su {topic}'], 'list_lessons': ['cosa hai imparato', 'mostra cosa ti ho insegnato', 'cosa ricordi'], 'scramble_word': ['giochiamo alle parole mescolate', 'dammi un anagramma', 'indovinello di parole'], 'describe_data': ['descrivi {path}', 'riassumi i dati di {path}', 'statistiche di {path}'], 'read_file': ['mostra il file {path}', 'leggi il file {path}', 'mostrami il contenuto di {path}'], 'moderate_text': ['controlla questo testo: {off}', 'è offensivo: {off}', 'modera: {off}'], 'scrape': ['estrai {sel} da {url}', 'prendi tutti i {sel} su {url}', 'scrapa {sel} da {url}'], 'crawl': ['scansiona {url}', 'esplora il sito {url}', 'percorri {url} fino a {n} pagine'], 'add_event': ['pianifica {etitle} il {date} alle {time}', 'fissa {etitle} per il {date} {time}', 'prenota {etitle} il {date} alle {time}']}, 'ru': {'list_files': ['покажи мои файлы', 'какие у меня файлы', 'список файлов в рабочей папке'], 'search_notes': ['найди в моих заметках {topic}', 'заметки о {topic}', 'что я записал про {topic}'], 'list_lessons': ['чему ты научился', 'покажи чему я тебя учил', 'что ты помнишь'], 'scramble_word': ['давай поиграем в перемешанные слова', 'дай анаграмму', 'словесная головоломка'], 'describe_data': ['опиши {path}', 'суммируй данные в {path}', 'статистика по {path}'], 'read_file': ['покажи файл {path}', 'прочитай файл {path}', 'покажи содержимое {path}'], 'moderate_text': ['проверь этот текст: {off}', 'это оскорбительно: {off}', 'модерируй: {off}'], 'scrape': ['извлеки {sel} с {url}', 'достань все {sel} на {url}', 'скрейпни {sel} с {url}'], 'crawl': ['обойди {url}', 'исследуй сайт {url}', 'обойди {url} до {n} страниц'], 'add_event': ['запланируй {etitle} на {date} в {time}', 'назначь {etitle} на {date} {time}', 'забронируй {etitle} на {date} в {time}']}}
+_merge_new_intents(COVERAGE_FILL)

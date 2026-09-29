@@ -21,13 +21,14 @@ HELP = ("I'm running offline (no model configured), so I understand these comman
 TRAIN_TOOLS = {"train_model", "training_status", "add_training_example", "train_from_file", "reset_training",
                "mark_wrong", "mark_good"}
 UNKNOWN = "__unknown__"     # nothing understood the phrase: remember it so it can be taught
+_POLITE_PREFIX = re.compile(r"^(?:(?:hey\s+)?k3[,\s]+)?(?:(?:(?:can|could|would|will)\s+you|please)\s+)+", re.I)
 _LEARN = re.compile(r'^learn\s+["\'“](.+?)["\'”]\s*(?:=>|->|=)\s*(.+)$', re.I | re.S)
 _TRAIN_ADD = re.compile(r'^train add\s+["\'“](.+?)["\'”]\s*(?:=>|->|=)\s*(.+)$', re.I | re.S)
 
 
 def parse_grammar(text: str):
     """Exact command grammar. Returns (tool, args) or None when the text is not a known command."""
-    t = text.strip()
+    t = _POLITE_PREFIX.sub("", text.strip())
     low = t.lower()
     if m := _LEARN.match(t):
         return "learn_instruction", {"trigger": m.group(1), "action": m.group(2).strip()}
@@ -81,19 +82,21 @@ def parse_grammar(text: str):
         return "__text__", "Tools: " + ", ".join(sorted(registry._TOOLS))
     if m := re.match(r"search\s+(?:my\s+)?notes?\s+(?:for\s+|about\s+|on\s+)?(.+)", t, re.I):
         return "search_notes", {"query": m.group(1)}
-    if m := re.match(r"(?:web\s+)?search\s+(?:the\s+(?:web|internet|net)\s+)?(?:for\s+)?(.+)", t, re.I):
+    if m := re.match(r"(?:web\s+)?search\s+(?:(?:the\s+)?(?:web|internet|net)\s+|online\s+)?(?:for\s+)?(.+)", t, re.I):
+        return "web_search", {"query": m.group(1)}
+    if m := re.match(r"(?:look\s+up|google|bing|duckduckgo)\s+(.+)", t, re.I):
         return "web_search", {"query": m.group(1)}
     if m := re.match(r"research\s+(.+)", t, re.I):
         return "research", {"question": m.group(1)}
     if m := re.match(r"(?:fetch|open|read)\s+(https?://\S+)", t, re.I):
         return "web_fetch", {"url": m.group(1)}
-    if m := re.match(r"crawl\s+(https?://\S+)(.*)", t, re.I):
+    if m := re.match(r"(?:crawl|spider|walk\s+through|explore|traverse|index)\s+(https?://\S+)(.*)", t, re.I):
         rest = m.group(2)
         args = {"start_url": m.group(1)}
-        if d := re.search(r"depth\s+(\d+)", rest, re.I):
-            args["max_depth"] = int(d.group(1))
-        if n := re.search(r"max\s+(\d+)", rest, re.I):
-            args["max_pages"] = int(n.group(1))
+        if d := re.search(r"depth\s+(\d+)|(\d+)\s*levels?", rest, re.I):
+            args["max_depth"] = int(d.group(1) or d.group(2))
+        if n := re.search(r"(?:max|up\s+to|limit)\s+(\d+)|(\d+)\s+pages", rest, re.I):
+            args["max_pages"] = int(n.group(1) or n.group(2))
         return "crawl", args
     if m := re.match(r"scrape\s+(https?://\S+)\s+(.+)", t, re.I):
         return "scrape", {"url": m.group(1), "selector": m.group(2).strip()}

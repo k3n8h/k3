@@ -93,5 +93,8 @@ has a competency exam split into **dev** phrasings (part of the training curricu
 scratch database and writes [`docs/ROLE_CERTIFICATION.md`](docs/ROLE_CERTIFICATION.md) with per-skill results,
 language coverage and open items. Tests fail if a tool has no owning skill, a skill lacks exams, or results drop.
 
-Confidence is risk-tiered: tools that change state need 90% confidence, read-only ones 80%; destructive tools are
-never auto-run from a guess. Skills that need a model say so instead of pretending.
+Every skill also faces an independent **stress exam** (differently worded, indirect, typo'd, other languages; never
+trained on). Confidence is risk-tiered: state-changing tools need 90% confidence *and* at least one word from that
+tool's own command wording (so n-gram luck can't add a blocklist word from "blah blah"), append-only tools (tasks,
+notes) and read-only ones need 80%; destructive tools are never auto-run from a guess. A bare URL is read, not
+crawled, unless the wording asks to walk the site. Skills that need a model say so instead of pretending.
