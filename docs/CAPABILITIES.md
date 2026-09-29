@@ -81,6 +81,7 @@ Try: `hello`
 - German (`de`, Latin): trained
 - Portuguese (`pt`, Latin): trained
 - Italian (`it`, Latin): trained
+- Russian (`ru`, Cyrillic): trained
 - Any other language (`*`, any): model-only (or teach it: `train add` / `train from`)
 
 ## Task types

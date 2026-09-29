@@ -152,6 +152,33 @@ LANG_TEMPLATES = {
         "chat": ["ciao", "buongiorno", "come stai", "raccontami una barzelletta", "grazie mille", "arrivederci",
                  "chi sei", "cosa pensi della pizza", "sono triste", "buonanotte"],
     },
+    "ru": {
+        "web_search": ["найди {topic}", "поищи в интернете {topic}", "загугли {topic}", "найди ссылки про {topic}",
+                       "поиск в сети {topic}"],
+        "research": ["исследуй {topic}", "изучи тему {topic}", "собери информацию о {topic}", "мне нужен отчет о {topic}",
+                     "расскажи о {topic}", "объясни {topic}", "что такое {topic}"],
+        "web_fetch": ["открой {url}", "прочитай {url}", "перейди на {url}", "скачай страницу {url}", "покажи {url}"],
+        "calculate": ["посчитай {expr}", "сколько будет {expr}", "вычисли {expr}", "реши {expr}", "сколько {expr}"],
+        "roll_dice": ["брось {dice}", "кинь {dice}", "брось кубик", "кинь кости", "бросок {dice}"],
+        "flip_coin": ["подбрось монетку", "орел или решка", "брось монету", "монетку подкинь", "кинь монетку"],
+        "now": ["который час", "какое сегодня число", "сколько времени", "какой сегодня день", "текущее время"],
+        "add_task": ["добавь задачу {title}", "новая задача: {title}", "напомни мне {title}", "мне нужно {title}",
+                     "создай задачу {title}"],
+        "list_tasks": ["мои задачи", "покажи мои задачи", "что мне нужно сделать", "список задач",
+                       "невыполненные задачи"],
+        "add_note": ["заметка {title}: {body}", "сохрани заметку {title}: {body}", "запиши {title}: {body}",
+                     "запомни {title}: {body}", "сделай заметку {title}: {body}"],
+        "list_events": ["мой календарь", "что в моем расписании", "покажи мои встречи", "ближайшие события",
+                        "какие у меня занятия"],
+        "convert_units": ["переведи {value} {fu} в {tu}", "сколько {tu} в {value} {fu}", "{value} {fu} в {tu}",
+                          "конвертируй {value} {fu} в {tu}", "сколько будет {value} {fu} в {tu}"],
+        "list_capabilities": ["что ты умеешь", "покажи свои возможности", "какие у тебя навыки", "список функций",
+                              "чем ты можешь помочь"],
+        "needs_model": ["напиши эссе о {topic}", "переведи привет на французский", "придумай идеи для {topic}",
+                        "напиши стихотворение о {topic}", "составь письмо начальнику", "напиши функцию на python"],
+        "chat": ["привет", "доброе утро", "как дела", "расскажи анекдот", "спасибо большое", "до свидания", "кто ты",
+                 "что ты думаешь о пицце", "мне грустно", "спокойной ночи"],
+    },
 }
 
 PREFIXES = {
@@ -160,11 +187,12 @@ PREFIXES = {
     "de": ["", "", "bitte ", "hey k3, ", "kannst du ", "ich möchte dass du "],
     "pt": ["", "", "por favor ", "ei k3, ", "você pode ", "eu quero que você "],
     "it": ["", "", "per favore ", "ehi k3, ", "puoi ", "vorrei che tu "],
+    "ru": ["", "", "пожалуйста ", "эй k3, ", "можешь ", "я хочу чтобы ты "],
 }
 SUFFIXES = {
     "es": ["", "", " por favor", " gracias"], "fr": ["", "", " s'il te plaît", " merci"],
     "de": ["", "", " bitte", " danke"], "pt": ["", "", " por favor", " obrigado"],
-    "it": ["", "", " per favore", " grazie"],
+    "it": ["", "", " per favore", " grazie"], "ru": ["", "", " пожалуйста", " спасибо"],
 }
 
 # Operator words for spoken arithmetic, per language: (symbol, words)
@@ -174,6 +202,7 @@ OPWORDS = {
     "fr": [("*", ["fois", "multiplié par"]), ("+", ["plus"]), ("-", ["moins"]), ("/", ["divisé par"])],
     "de": [("*", ["mal"]), ("+", ["plus"]), ("-", ["minus"]), ("/", ["geteilt durch"])],
     "pt": [("*", ["vezes", "multiplicado por"]), ("+", ["mais"]), ("-", ["menos"]), ("/", ["dividido por"])],
+    "ru": [("*", ["умножить на"]), ("+", ["плюс"]), ("-", ["минус"]), ("/", ["разделить на"])],
     "it": [("*", ["per", "moltiplicato per"]), ("+", ["più", "piu"]), ("-", ["meno"]), ("/", ["diviso", "diviso per"])],
 }
 
@@ -203,6 +232,11 @@ FILLERS = {
                       "reservar as passagens", "regar as plantas"],
                body=["ovos, pão e manteiga", "ideias para o lançamento", "a reunião mudou para sexta",
                      "ler o capítulo três"]),
+    "ru": dict(topic=["солнечная энергия", "французская революция", "изменение климата", "римская империя",
+                      "фотосинтез", "черные дыры", "инфляция", "барокко"],
+               title=["купить молоко", "позвонить маме", "закончить отчет", "заплатить за аренду",
+                      "забронировать билеты", "полить цветы"],
+               body=["яйца, хлеб и масло", "идеи для запуска", "встречу перенесли на пятницу", "прочитать третью главу"]),
     "it": dict(topic=["energia solare", "la rivoluzione francese", "il cambiamento climatico", "l'impero romano",
                       "la fotosintesi", "i buchi neri", "l'inflazione", "l'arte barocca"],
                title=["comprare il latte", "chiamare la mamma", "finire il rapporto", "pagare l'affitto",

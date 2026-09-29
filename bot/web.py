@@ -20,25 +20,38 @@ def allow_private() -> bool:
     return os.environ.get("BOT_ALLOW_PRIVATE_NETS") == "1"
 
 
-def check_url(url: str) -> None:
-    """SSRF guard: http(s) only, and the host must not resolve to a private/loopback address."""
+def resolve_public(url: str) -> tuple[str, str]:
+    """SSRF guard. Returns (ip, hostname) after checking every resolved address is public.
+
+    The caller connects to this exact IP, so the check and the connection can't disagree (no DNS rebinding).
+    """
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.hostname:
         raise ValueError("only http(s) URLs are allowed")
-    if allow_private():
-        return
-    for info in socket.getaddrinfo(p.hostname, p.port or 80, proto=socket.IPPROTO_TCP):
+    infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    for info in infos:
         ip = ipaddress.ip_address(info[4][0])
-        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+        if not allow_private() and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
+                                    or ip.is_multicast or ip.is_unspecified):
             raise ValueError(f"blocked: {p.hostname} resolves to a non-public address")
+    return infos[0][4][0], p.hostname
+
+
+def check_url(url: str) -> None:
+    resolve_public(url)
 
 
 def fetch(url: str, max_redirects: int = 5) -> tuple[str, str, str]:
-    """Return (final_url, content_type, text). Redirects are followed manually so each hop is checked."""
-    with httpx.Client(timeout=20, headers={"User-Agent": UA}) as c:
+    """Return (final_url, content_type, text). Redirects are followed manually so each hop is checked,
+    and each request is pinned to the IP that passed the check."""
+    with httpx.Client(timeout=20) as c:
         for _ in range(max_redirects + 1):
-            check_url(url)
-            with c.stream("GET", url) as r:
+            ip, host = resolve_public(url)
+            p = urlparse(url)
+            netloc_ip = f"[{ip}]" if ":" in ip else ip
+            pinned = p._replace(netloc=netloc_ip + (f":{p.port}" if p.port else "")).geturl()
+            headers = {"User-Agent": UA, "Host": p.netloc}
+            with c.stream("GET", pinned, headers=headers, extensions={"sni_hostname": host}) as r:
                 if r.is_redirect:
                     url = urljoin(url, r.headers["location"])
                     continue

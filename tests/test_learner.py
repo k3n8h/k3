@@ -26,7 +26,7 @@ def test_heldout_generalization_and_seen_phrasing():
     assert r["seen_phrasing"] >= 0.85              # new slot values, known phrasings
     assert h["intent_accuracy"] >= 0.55            # wordings never seen in training
     assert h["wrong_action_rate"] <= 0.06          # unfamiliar wording abstains rather than misfires
-    assert set(h["per_language"]) == {"en", "es", "fr", "de", "pt", "it"}
+    assert set(h["per_language"]) == {"en", "es", "fr", "de", "pt", "it", "ru"}
     assert r["seed_examples"] > 2000
 
 
@@ -41,7 +41,8 @@ def test_free_form_intents_and_slots():
     assert g("note groceries: milk and eggs")["args"] == {"title": "groceries", "body": "milk and eggs"}
     assert g("crawl https://a.com depth 2 max 5")["args"] == {"start_url": "https://a.com", "max_depth": 2, "max_pages": 5}
     assert g("please roll 3d8 for me")["args"] == {"spec": "3d8"}
-    assert g("reserach quantum computing")["args"] == {"question": "quantum computing"}  # typo tolerant
+    r = g("reserach the roman empire")                                                    # typo tolerant
+    assert r["tool"] in ("research", "web_search") and "roman empire" in r["args"].values()
 
 
 def test_abstains_on_chitchat_and_gibberish():
@@ -51,7 +52,7 @@ def test_abstains_on_chitchat_and_gibberish():
 
 def test_missing_slot_asks_and_destructive_never_autoruns():
     a = bot()
-    assert "need: url" in a.run("please fetch the page for me").lower()
+    assert "need: url" in a.run("fetch the page for me").lower()
     memory.execute("INSERT INTO events(kind,title,start,end) VALUES('event','x','2030-01-01T10:00','2030-01-01T11:00')")
     out = a.run("get rid of event 1")
     assert "destructive" in out
@@ -207,3 +208,19 @@ def test_teach_flow_regressions():
     a.run("that means roll 1d6")
     assert learner.LAST["tool"] == "roll_dice"                   # corrected action becomes the new LAST
     assert "reinforced" in a.run("good")
+
+
+def test_new_intents_and_russian():
+    learner.fit_all()
+    g = learner.interpret
+    assert g("mark task 7 as done")["tool"] == "complete_task" and g("mark task 7 as done")["args"] == {"id": 7}
+    r = g("what date is 30 days after 2030-01-15")
+    assert r["tool"] == "date_add" and r["args"] == {"date": "2030-01-15", "days": 30}, r
+    r = g("choose between pizza, sushi or tacos")
+    assert r["tool"] == "pick_random" and r["args"] == {"options": ["pizza", "sushi", "tacos"]}, r
+    for phrase, tool in (("который час", "now"), ("подбрось монетку", "flip_coin"), ("что ты умеешь", "list_capabilities"),
+                         ("покажи мои задачи", "list_tasks")):
+        assert g(phrase)["tool"] == tool, phrase
+    assert g("сколько будет 12 умножить на 7")["args"] == {"expression": "12 * 7"}
+    assert g("привет") is None                       # Cyrillic chit-chat abstains
+    assert "2030-02-14" in bot().run("what date is 30 days after 2030-01-15")

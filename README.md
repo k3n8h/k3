@@ -77,6 +77,6 @@ task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs
 - The system prompt tells models that web/file/tool text is untrusted data.
 - `query_data` filters reject function calls, attributes and `@variables`; aggregations are whitelisted.
 - The web UI is single-user and only accepts `localhost`/`127.0.0.1` Host headers (extend with `BOT_ALLOWED_HOSTS`).
-- Fetching blocks private/loopback addresses and re-checks every redirect hop. Known limitation: the hostname is
-  resolved once for the check and again by the HTTP client, so a hostile DNS server could still race it (DNS rebinding).
+- Fetching blocks private/loopback/link-local addresses, re-checks every redirect hop, and connects to the exact IP that
+  passed the check (TLS still validates the original hostname), so DNS rebinding cannot swap it.
 - `run_python` is a timeout/cwd-restricted subprocess, **not** a sandbox: run the bot in a container if you connect a model.

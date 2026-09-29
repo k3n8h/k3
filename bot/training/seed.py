@@ -29,6 +29,9 @@ DATES = ["2030-03-05", "2030-11-21", "2031-01-09", "2030-07-14"]
 TIMES = ["09:00", "14:00", "10:30", "16:15", "08:45"]
 KINDS = [("class", "class"), ("lecture", "class"), ("appointment", "appointment"), ("meeting", "event"),
          ("event", "event")]
+OPTIONS = [("pizza, sushi, tacos", ["pizza", "sushi", "tacos"]), ("red or blue", ["red", "blue"]),
+           ("tea, coffee or juice", ["tea", "coffee", "juice"]), ("cinema or bowling", ["cinema", "bowling"]),
+           ("rock, paper, scissors", ["rock", "paper", "scissors"])]
 OFFENSIVE = ["what the hell is this shit", "you are an asshole", "this is bullshit", "fuck this"]
 CHAT = {
     "en": ["tell me a joke", "how are you today", "hello", "hi there", "who are you", "what is the meaning of life",
@@ -69,6 +72,7 @@ def _fields(rng: random.Random, lang: str = "en") -> dict:
                 path=rng.choice(PATHS), id=rng.randint(1, 30), d=rng.randint(1, 3), n=rng.choice([5, 10, 20, 30]),
                 value=rng.choice([5, 10, 12.5, 100, 3, 72, 20]), fu=surface(a), fu_c=a, tu=surface(b), tu_c=b,
                 date=rng.choice(DATES), time=rng.choice(TIMES), kind=kw, kind_c=kind,
+                days=rng.choice([3, 7, 10, 14, 30, 45, 90]), opts=(o := rng.choice(OPTIONS))[0], opts_l=o[1],
                 etitle=rng.choice(EVENT_TITLES), off=rng.choice(OFFENSIVE), mins=rng.choice([30, 45, 60, 90]),
                 ) | local
 
@@ -176,6 +180,22 @@ for _t, _extra in EXTRA_EN.items():
         SPECS[_t][0].extend(_extra)
     else:
         SPECS[_t] = (list(_extra), EXTRA_ARGS[_t])
+
+
+NEW_TOOLS = {
+    "complete_task": (["mark task {id} as done", "complete task {id}", "finish task {id}", "task {id} is done",
+                       "check off task {id}", "tick off task {id}", "i finished task number {id}", "done with task {id}"],
+                      {"id": ("id", None)}),
+    "date_add": (["what date is {days} days after {date}", "add {days} days to {date}", "{days} days from {date}",
+                  "what is {days} days after {date}", "count {days} days forward from {date}",
+                  "which day is {days} days past {date}"],
+                 {"date": ("date", None), "days": ("days", None)}),
+    "pick_random": (["pick one of {opts}", "choose between {opts}", "randomly choose from {opts}",
+                     "decide for me: {opts}", "help me choose: {opts}", "select one at random from {opts}"],
+                    {"options": ("opts", lambda f: f["opts_l"])}),
+}
+for _t, _v in NEW_TOOLS.items():
+    SPECS[_t] = (list(_v[0]), _v[1])
 
 
 # More phrasing variety per tool (breadth of wording is what lets the learner handle unseen requests).

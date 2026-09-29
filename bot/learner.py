@@ -207,10 +207,10 @@ def free_text(text: str, triggers) -> Optional[str]:
     return out or None
 
 
-_OPS = [(r"to the power of|elevado a|hoch|puissance", "**"),
-        (r"multiplied by|multiplicado por|multiplie par|multiplicado|moltiplicato per|times|vezes|fois|mal|por|per", "*"),
-        (r"divided by|dividido por|divise par|geteilt durch|diviso per|diviso|over|entre", "/"),
-        (r"plus|mas|mais|piu", "+"), (r"minus|menos|moins|meno", "-"), (r"\^", "**")]
+_OPS = [(r"to the power of|elevado a|hoch|puissance|в степени", "**"),
+        (r"multiplied by|umnozhit na|умножить на|multiplicado por|multiplie par|multiplicado|moltiplicato per|times|vezes|fois|mal|por|per", "*"),
+        (r"divided by|разделить на|dividido por|divise par|geteilt durch|diviso per|diviso|over|entre", "/"),
+        (r"plus|mas|mais|piu|плюс", "+"), (r"minus|menos|moins|meno|минус", "-"), (r"\^", "**")]
 
 
 def _expression(text: str) -> Optional[str]:
@@ -308,6 +308,16 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
         elif name == "date":
             d = parse_when(text)["date"]
             v = d.isoformat() if d else None
+        elif name == "days":
+            m = re.search(r"(\d+)\s*(?:days?|dias?|jours?|tage?|giorni|дн\w*)", fold(text)) or re.search(
+                r"\b(\d{1,4})\b(?!-)", re.sub(r"\d{4}-\d{2}-\d{2}", " ", text))
+            v = int(m.group(1)) if m else None
+            if v is not None and re.search(r"\b(before|ago|minus|earlier)\b", fold(text)):
+                v = -v
+        elif name == "options" and spec["type"] == "array":
+            body = free_text(text, triggers) or ""
+            parts = [x.strip() for x in re.split(r",|\bor\b|\bvs\.?\b|\bo\b|\bou\b|\boder\b|\bили\b", body) if x.strip()]
+            v = parts if len(parts) >= 2 else None
         elif name == "id":
             m = re.search(r"\b(\d+)\b", text)
             v = int(m.group(1)) if m else None

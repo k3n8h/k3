@@ -78,6 +78,7 @@ LANGUAGES = {
     "de": dict(name="German", script="Latin", support="trained"),
     "pt": dict(name="Portuguese", script="Latin", support="trained"),
     "it": dict(name="Italian", script="Latin", support="trained"),
+    "ru": dict(name="Russian", script="Cyrillic", support="trained"),
     "*": dict(name="Any other language", script="any", support="model-only (or teach it: `train add` / `train from`)"),
 }
 

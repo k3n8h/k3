@@ -75,3 +75,57 @@ def test_web_ui_rejects_foreign_host_header():
 def test_system_prompt_treats_tool_text_as_untrusted():
     from bot import config
     assert "untrusted" in config.SYSTEM_PROMPT
+
+
+def _server(monkeypatch):
+    import threading
+    from http.server import BaseHTTPRequestHandler, HTTPServer
+
+    class H(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html")
+            self.end_headers()
+            self.wfile.write(f"<title>t</title>host={self.headers['Host']}".encode())
+
+        def log_message(self, *a):
+            pass
+
+    srv = HTTPServer(("127.0.0.1", 0), H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_fetch_pins_the_checked_ip_so_dns_rebinding_cannot_swap_it(monkeypatch):
+    import socket
+    from bot import web
+    srv = _server(monkeypatch)
+    monkeypatch.setenv("BOT_ALLOW_PRIVATE_NETS", "1")
+    calls = []
+
+    def fake_getaddrinfo(host, port, *a, **k):
+        calls.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("127.0.0.1", port))]
+
+    monkeypatch.setattr(web.socket, "getaddrinfo", fake_getaddrinfo)
+    # 'rebind.test' does not exist in real DNS: only the pinned, already-resolved IP can work.
+    final, ctype, body = web.fetch(f"http://rebind.test:{srv.server_port}/")
+    assert f"host=rebind.test:{srv.server_port}" in body       # original Host header preserved
+    assert calls.count("rebind.test") == 1                     # the hostname is resolved exactly once
+    srv.shutdown()
+
+
+def test_fetch_blocks_hosts_resolving_to_private_addresses(monkeypatch):
+    import socket
+    from bot import web
+    monkeypatch.delenv("BOT_ALLOW_PRIVATE_NETS", raising=False)
+    for ip in ("10.0.0.5", "127.0.0.1", "169.254.169.254", "192.168.1.1", "0.0.0.0"):
+        monkeypatch.setattr(web.socket, "getaddrinfo",
+                            lambda h, p, *a, _ip=ip, **k: [(socket.AF_INET, socket.SOCK_STREAM, 6, "", (_ip, p))])
+        with pytest.raises(ValueError, match="non-public"):
+            web.fetch("http://looks-public.example/")
+    # if ANY resolved address is private the host is refused (mixed answers)
+    monkeypatch.setattr(web.socket, "getaddrinfo", lambda h, p, *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", p)), (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.1.1", p))])
+    with pytest.raises(ValueError, match="non-public"):
+        web.resolve_public("http://mixed.example/")
