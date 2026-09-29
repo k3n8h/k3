@@ -2,13 +2,13 @@
 from bot import config, memory
 from bot.registry import tool
 
-_client = None  # injectable for tests
+_provider = None  # injectable for tests
 
 
 def run_goal(goal: str) -> str:
     """Run a goal to completion without user interaction. Destructive tools are auto-denied."""
     from bot.agent import Agent
-    agent = Agent(client=_client, max_iterations=config.AUTONOMOUS_MAX_ITERATIONS,
+    agent = Agent(provider=_provider, max_iterations=config.AUTONOMOUS_MAX_ITERATIONS,
                   system=config.SYSTEM_PROMPT + "\nYou are working autonomously: plan, use tools, "
                   "then finish with a short report of what you did. Do not ask questions.")
     return agent.run(goal)

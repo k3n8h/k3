@@ -69,26 +69,22 @@ def test_utilities_and_fun():
     assert '"total"' in registry.call("roll_dice", {"spec": "2d6"})
 
 
-def _resp(stop, *blocks):
-    return SimpleNamespace(stop_reason=stop, content=list(blocks))
+class FakeProvider:
+    def __init__(self, replies):
+        self.replies = iter(replies)
 
-
-class FakeClient:
-    def __init__(self, responses):
-        self.responses = iter(responses)
-        self.messages = SimpleNamespace(create=lambda **kw: next(self.responses))
+    def complete(self, system, messages, tools, max_tokens=4096):
+        return next(self.replies)
 
 
 def test_agent_loop_and_destructive_denied():
     from bot.agent import Agent
-    tu = SimpleNamespace(type="tool_use", id="1", name="add_task", input={"title": "x"})
-    txt = SimpleNamespace(type="text", text="done")
-    agent = Agent(client=FakeClient([_resp("tool_use", tu), _resp("end_turn", txt)]))
+    from bot.llm import Reply, ToolCall
+    agent = Agent(provider=FakeProvider([Reply(tool_calls=[ToolCall("1", "add_task", {"title": "x"})]), Reply("done")]))
     assert agent.run("add a task") == "done"
     assert memory.query("SELECT title FROM tasks") == [{"title": "x"}]
 
     memory.execute("INSERT INTO notes(title,body) VALUES('a','b')")
-    td = SimpleNamespace(type="tool_use", id="2", name="delete_note", input={"id": 1})
-    agent = Agent(client=FakeClient([_resp("tool_use", td), _resp("end_turn", txt)]))
+    agent = Agent(provider=FakeProvider([Reply(tool_calls=[ToolCall("2", "delete_note", {"id": 1})]), Reply("ok")]))
     agent.run("delete it")
     assert len(memory.query("SELECT * FROM notes")) == 1  # denied by default
