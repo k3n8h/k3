@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "k3-bot"
+version = "0.1.0"
+description = "Multi-purpose Claude-powered assistant (CLI + web chat)"
+requires-python = ">=3.10"
+dependencies = [
+  "anthropic>=0.40",
+  "fastapi>=0.110",
+  "uvicorn>=0.29",
+  "apscheduler>=3.10,<4",
+  "pandas>=2.0",
+  "openpyxl>=3.1",
+  "matplotlib>=3.8",
+  "rich>=13.7",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8", "httpx>=0.27"]
+
+[project.scripts]
+k3-bot = "bot.interfaces.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["bot*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
