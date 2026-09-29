@@ -162,6 +162,13 @@ EXTRA_EN = {
                         "what's open on {date}", "show free slots for {date}", "am i free on {date}"],
     "moderate_text": ["is this offensive: {off}", "check this text for bad words: {off}", "moderate: {off}",
                       "scan this for profanity: {off}", "does this contain swearing: {off}", "filter this: {off}"],
+    "complete_task": ["mark task {id} as done", "complete task {id}", "finish task {id}", "task {id} is done",
+                      "check off task {id}", "tick off task {id}", "i finished task number {id}", "done with task {id}"],
+    "date_add": ["what date is {days} days after {date}", "add {days} days to {date}", "{days} days from {date}",
+                 "what is {days} days after {date}", "count {days} days forward from {date}",
+                 "which day is {days} days past {date}"],
+    "pick_random": ["pick one of {opts}", "choose between {opts}", "randomly choose from {opts}",
+                    "decide for me: {opts}", "help me choose: {opts}", "select one at random from {opts}"],
     "read_file": ["show file {path}", "read the file {path}", "cat {path}", "display the contents of {path}",
                   "view the text of {path}", "print out {path}"],
 }
@@ -172,6 +179,9 @@ EXTRA_ARGS = {
     "find_free_slots": {"date": ("date", None)},
     "moderate_text": {"text": ("off", None)},
     "read_file": {"path": ("path", None)},
+    "complete_task": {"id": ("id", None)},
+    "date_add": {"date": ("date", None), "days": ("days", None)},
+    "pick_random": {"options": ("opts", lambda f: f["opts_l"])},
     "research": {"question": ("topic", None)},
     "list_capabilities": {}, "needs_model": {},
 }
@@ -180,22 +190,6 @@ for _t, _extra in EXTRA_EN.items():
         SPECS[_t][0].extend(_extra)
     else:
         SPECS[_t] = (list(_extra), EXTRA_ARGS[_t])
-
-
-NEW_TOOLS = {
-    "complete_task": (["mark task {id} as done", "complete task {id}", "finish task {id}", "task {id} is done",
-                       "check off task {id}", "tick off task {id}", "i finished task number {id}", "done with task {id}"],
-                      {"id": ("id", None)}),
-    "date_add": (["what date is {days} days after {date}", "add {days} days to {date}", "{days} days from {date}",
-                  "what is {days} days after {date}", "count {days} days forward from {date}",
-                  "which day is {days} days past {date}"],
-                 {"date": ("date", None), "days": ("days", None)}),
-    "pick_random": (["pick one of {opts}", "choose between {opts}", "randomly choose from {opts}",
-                     "decide for me: {opts}", "help me choose: {opts}", "select one at random from {opts}"],
-                    {"options": ("opts", lambda f: f["opts_l"])}),
-}
-for _t, _v in NEW_TOOLS.items():
-    SPECS[_t] = (list(_v[0]), _v[1])
 
 
 # More phrasing variety per tool (breadth of wording is what lets the learner handle unseen requests).

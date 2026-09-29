@@ -77,12 +77,16 @@ def test_system_prompt_treats_tool_text_as_untrusted():
     assert "untrusted" in config.SYSTEM_PROMPT
 
 
-def _server(monkeypatch):
+@pytest.fixture
+def server():
     import threading
     from http.server import BaseHTTPRequestHandler, HTTPServer
 
+    seen = []
+
     class H(BaseHTTPRequestHandler):
         def do_GET(self):
+            seen.append(self.headers["Host"])
             self.send_response(200)
             self.send_header("Content-Type", "text/html")
             self.end_headers()
@@ -92,14 +96,17 @@ def _server(monkeypatch):
             pass
 
     srv = HTTPServer(("127.0.0.1", 0), H)
+    srv.seen = seen
     threading.Thread(target=srv.serve_forever, daemon=True).start()
-    return srv
+    yield srv
+    srv.shutdown()
+    srv.server_close()
 
 
-def test_fetch_pins_the_checked_ip_so_dns_rebinding_cannot_swap_it(monkeypatch):
+def test_fetch_pins_the_checked_ip_so_dns_rebinding_cannot_swap_it(monkeypatch, server):
     import socket
     from bot import web
-    srv = _server(monkeypatch)
+    srv = server
     monkeypatch.setenv("BOT_ALLOW_PRIVATE_NETS", "1")
     calls = []
 
@@ -112,7 +119,6 @@ def test_fetch_pins_the_checked_ip_so_dns_rebinding_cannot_swap_it(monkeypatch):
     final, ctype, body = web.fetch(f"http://rebind.test:{srv.server_port}/")
     assert f"host=rebind.test:{srv.server_port}" in body       # original Host header preserved
     assert calls.count("rebind.test") == 1                     # the hostname is resolved exactly once
-    srv.shutdown()
 
 
 def test_fetch_blocks_hosts_resolving_to_private_addresses(monkeypatch):
@@ -129,3 +135,28 @@ def test_fetch_blocks_hosts_resolving_to_private_addresses(monkeypatch):
         (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("8.8.8.8", p)), (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.1.1.1", p))])
     with pytest.raises(ValueError, match="non-public"):
         web.resolve_public("http://mixed.example/")
+
+
+def _fake_dns(monkeypatch, ips):
+    import socket
+    from bot import web
+    monkeypatch.setenv("BOT_ALLOW_PRIVATE_NETS", "1")
+    monkeypatch.setattr(web.socket, "getaddrinfo", lambda h, p, *a, **k: [
+        (socket.AF_INET, socket.SOCK_STREAM, 6, "", (ip, p)) for ip in ips])
+
+
+def test_fetch_falls_back_to_the_next_vetted_address(monkeypatch, server):
+    from bot import web
+    _fake_dns(monkeypatch, ["127.0.0.2", "127.0.0.1"])           # first address has nothing listening
+    _, _, body = web.fetch(f"http://dual.test:{server.server_port}/")
+    assert "host=dual.test" in body
+
+
+def test_host_header_never_carries_userinfo_and_proxy_env_is_ignored(monkeypatch, server):
+    from bot import web
+    _fake_dns(monkeypatch, ["127.0.0.1"])
+    monkeypatch.setenv("HTTP_PROXY", "http://127.0.0.1:9")       # would break/bypass the pin if honored
+    monkeypatch.setenv("http_proxy", "http://127.0.0.1:9")
+    _, _, body = web.fetch(f"http://user:secret@site.test:{server.server_port}/")
+    assert f"host=site.test:{server.server_port}" in body and "secret" not in body
+    assert all("secret" not in h for h in server.seen)

@@ -60,7 +60,7 @@ Everything the bot can do is organized in `bot/training/catalog.py` (capabilitie
 task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs/CAPABILITIES.md); ask the bot
 `capabilities` or `what can you do`. Tests fail if a tool is missing from the catalog.
 
-- **Languages trained:** English, Spanish, French, German, Portuguese, Italian (Latin script; accents folded).
+- **Languages trained:** English, Spanish, French, German, Portuguese, Italian (Latin script, accents folded) and Russian (Cyrillic).
   Any other language works through an LLM provider, or teach it with `train add` / `train from`.
 - **Subjects:** ~80 topics across 10 subject areas seed the research/search/notes slots.
 - **Recognized but not faked:** writing, coding, translating, brainstorming and design requests are classified

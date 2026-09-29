@@ -24,7 +24,8 @@ MIN_KNOWN = 0.4       # share of a phrase's features that must have been seen in
 TEMPERATURE = 10.0
 FAMILIARITY_POWER = 0.0
 RUNNER_UP_MIN = 0.05
-LOOKUP_FAMILY = {"research", "web_search"}   # read-only, overlapping intents: pool their probability
+# Read-only intents that overlap by nature; their probabilities are pooled before applying the threshold.
+FAMILIES = [{"research", "web_search"}, {"web_fetch", "scrape", "crawl"}]
 MIN_CONFIDENCE = 0.9
 TRIGGER_DF = 0.0   # frames exclude slot values, so any frame word is command syntax
 STOPS = {"please", "thanks", "thank", "you", "can", "could", "would", "hey", "k3", "me", "for", "the", "on", "about",
@@ -208,13 +209,13 @@ def free_text(text: str, triggers) -> Optional[str]:
 
 
 _OPS = [(r"to the power of|elevado a|hoch|puissance|в степени", "**"),
-        (r"multiplied by|umnozhit na|умножить на|multiplicado por|multiplie par|multiplicado|moltiplicato per|times|vezes|fois|mal|por|per", "*"),
+        (r"multiplied by|умножить на|multiplicado por|multiplie par|multiplicado|moltiplicato per|times|vezes|fois|mal|por|per", "*"),
         (r"divided by|разделить на|dividido por|divise par|geteilt durch|diviso per|diviso|over|entre", "/"),
         (r"plus|mas|mais|piu|плюс", "+"), (r"minus|menos|moins|meno|минус", "-"), (r"\^", "**")]
 
 
 def _expression(text: str) -> Optional[str]:
-    t = fold(text)
+    t = re.sub(r"\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}:\d{2}\b", " ", fold(text))   # dates/times are not arithmetic
     for pat, sym in _OPS:
         t = re.sub(rf"(?<![^\W\d_]){pat}(?![^\W\d_])", f" {sym} ", t)
     t = re.sub(r"(?<=\d)\s*x\s*(?=\d)", " * ", t)
@@ -309,18 +310,25 @@ def extract_args(tool: str, text: str, triggers) -> tuple[dict, list]:
             d = parse_when(text)["date"]
             v = d.isoformat() if d else None
         elif name == "days":
-            m = re.search(r"(\d+)\s*(?:days?|dias?|jours?|tage?|giorni|дн\w*)", fold(text)) or re.search(
-                r"\b(\d{1,4})\b(?!-)", re.sub(r"\d{4}-\d{2}-\d{2}", " ", text))
+            f = fold(text)
+            m = re.search(r"(\d+)\s*(?:days?|dias?|jours?|tage?|giorni|дн\w*)\b", f)
+            if m is None:                              # bare number: only if it is the single non-date number
+                nums = re.findall(r"\b\d{1,4}\b(?!-)", re.sub(r"\d{4}-\d{2}-\d{2}", " ", f))
+                m = re.match(r"(\d+)$", nums[0]) if len(set(nums)) == 1 else None
             v = int(m.group(1)) if m else None
-            if v is not None and re.search(r"\b(before|ago|minus|earlier)\b", fold(text)):
+            if re.search(r"\d+\s*(?:months?|years?)\b", f):
+                v = None                                 # variable-length units: ask instead of guessing
+            elif (w := re.search(r"(\d+)\s*weeks?\b", f)):
+                v = int(w.group(1)) * 7
+            if v is not None and re.search(rf"{v}\s*(?:days?|dias?|jours?|tage?|giorni)?\s*(?:before|ago|earlier|antes|avant|vor)\b", f):
                 v = -v
         elif name == "options" and spec["type"] == "array":
             body = free_text(text, triggers) or ""
-            parts = [x.strip() for x in re.split(r",|\bor\b|\bvs\.?\b|\bo\b|\bou\b|\boder\b|\bили\b", body) if x.strip()]
+            parts = [x.strip() for x in re.split(r",|\s(?:or|vs\.?|ou|oder|o|oppure|или)\s", body) if x.strip()]
             v = parts if len(parts) >= 2 else None
         elif name == "id":
-            m = re.search(r"\b(\d+)\b", text)
-            v = int(m.group(1)) if m else None
+            ids = set(re.findall(r"\b\d+\b", text))       # "tasks 3 and 4" is ambiguous: ask, don't guess
+            v = int(ids.pop()) if len(ids) == 1 else None
         elif name == "path":
             m = re.search(r"[\w./-]+\.(?:csv|xlsx|xls|json|md|txt|py|html|svg|png)\b", text, re.I)
             v = m.group(0) if m else None
@@ -451,10 +459,12 @@ def resolve(model: Model, text: str) -> Optional[dict]:
         if expr and re.fullmatch(r"[\d\.\(\)\s\+\-\*/%]+", expr) and \
                 any(t == "calculate" and p > 1e-6 for t, p in ranked[:6]):
             return {"tool": "calculate", "args": {"expression": expr}, "confidence": round(top_p, 3), "missing": []}
-    if top_t in LOOKUP_FAMILY and top_p < MIN_CONFIDENCE:   # search vs research is a near-tie by nature
-        fam = sum(p for t, p in ranked if t in LOOKUP_FAMILY)
-        if fam >= MIN_CONFIDENCE:
-            top_p = fam
+    if top_p < MIN_CONFIDENCE:
+        for fam_set in FAMILIES:
+            if top_t in fam_set:
+                fam = sum(p for t, p in ranked if t in fam_set)
+                if fam >= MIN_CONFIDENCE:
+                    top_p = fam
     if top_t == "chat" or top_p < MIN_CONFIDENCE:
         return None
     first = None

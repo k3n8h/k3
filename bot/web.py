@@ -20,49 +20,70 @@ def allow_private() -> bool:
     return os.environ.get("BOT_ALLOW_PRIVATE_NETS") == "1"
 
 
-def resolve_public(url: str) -> tuple[str, str]:
-    """SSRF guard. Returns (ip, hostname) after checking every resolved address is public.
+def resolve_public(url: str) -> tuple[list[str], str]:
+    """SSRF guard. Returns ([vetted ips], hostname); every resolved address must be public.
 
-    The caller connects to this exact IP, so the check and the connection can't disagree (no DNS rebinding).
+    fetch() connects only to these exact IPs, so the check and the connection can't disagree
+    (no DNS rebinding).
     """
     p = urlparse(url)
     if p.scheme not in ("http", "https") or not p.hostname:
         raise ValueError("only http(s) URLs are allowed")
     infos = socket.getaddrinfo(p.hostname, p.port or (443 if p.scheme == "https" else 80), proto=socket.IPPROTO_TCP)
+    ips = []
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
         if not allow_private() and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved
                                     or ip.is_multicast or ip.is_unspecified):
             raise ValueError(f"blocked: {p.hostname} resolves to a non-public address")
-    return infos[0][4][0], p.hostname
+        if info[4][0] not in ips:
+            ips.append(info[4][0])
+    if not ips:
+        raise ValueError(f"could not resolve {p.hostname}")
+    return ips, p.hostname
 
 
-def check_url(url: str) -> None:
-    resolve_public(url)
+def _get_pinned(url: str, ip: str, host: str) -> tuple[httpx.Response, bytes]:
+    """One GET to `ip` with the original Host header and TLS SNI. A fresh client per attempt means no
+    connection is ever pooled across hostnames; the environment's proxy settings are ignored on purpose
+    (a proxy would route by the IP we pinned and defeat the check)."""
+    p = urlparse(url)
+    netloc = f"[{ip}]" if ":" in ip else ip
+    if p.port:
+        netloc += f":{p.port}"
+    host_header = host if not p.port else f"{host}:{p.port}"
+    with httpx.Client(timeout=20, trust_env=False) as c:
+        with c.stream("GET", p._replace(netloc=netloc).geturl(),
+                      headers={"User-Agent": UA, "Host": host_header}, extensions={"sni_hostname": host}) as r:
+            if r.is_redirect:
+                return r, b""
+            r.raise_for_status()
+            data = b""
+            for chunk in r.iter_bytes():
+                data += chunk
+                if len(data) > MAX_BYTES:
+                    break
+            return r, data[:MAX_BYTES]
 
 
 def fetch(url: str, max_redirects: int = 5) -> tuple[str, str, str]:
-    """Return (final_url, content_type, text). Redirects are followed manually so each hop is checked,
-    and each request is pinned to the IP that passed the check."""
-    with httpx.Client(timeout=20) as c:
-        for _ in range(max_redirects + 1):
-            ip, host = resolve_public(url)
-            p = urlparse(url)
-            netloc_ip = f"[{ip}]" if ":" in ip else ip
-            pinned = p._replace(netloc=netloc_ip + (f":{p.port}" if p.port else "")).geturl()
-            headers = {"User-Agent": UA, "Host": p.netloc}
-            with c.stream("GET", pinned, headers=headers, extensions={"sni_hostname": host}) as r:
-                if r.is_redirect:
-                    url = urljoin(url, r.headers["location"])
-                    continue
-                r.raise_for_status()
-                data = b""
-                for chunk in r.iter_bytes():
-                    data += chunk
-                    if len(data) > MAX_BYTES:
-                        break
-                ctype = r.headers.get("content-type", "")
-                return url, ctype, data[:MAX_BYTES].decode(r.encoding or "utf-8", errors="replace")
+    """Return (final_url, content_type, text). Redirects are followed manually so each hop is re-checked,
+    and each request goes only to addresses that passed the check (trying them in order)."""
+    for _ in range(max_redirects + 1):
+        ips, host = resolve_public(url)
+        last: Exception | None = None
+        for ip in ips:
+            try:
+                r, data = _get_pinned(url, ip, host)
+                break
+            except (httpx.ConnectError, httpx.ConnectTimeout) as e:   # try the next vetted address
+                last = e
+        else:
+            raise last or ValueError("connection failed")
+        if r.is_redirect:
+            url = urljoin(url, r.headers["location"])
+            continue
+        return url, r.headers.get("content-type", ""), data.decode(r.encoding or "utf-8", errors="replace")
     raise ValueError("too many redirects")
 
 
