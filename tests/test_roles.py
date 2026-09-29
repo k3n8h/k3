@@ -104,3 +104,40 @@ def test_state_changing_guesses_need_command_evidence_and_bare_urls_are_not_craw
     assert r["tool"] == "user_moderation_status"
     assert learner.interpret("silencia a mallory")["tool"] == "moderate_user"
     assert learner.interpret("mallory keeps spamming, warn her: links")["args"]["user"] == "mallory"
+
+
+# ---- job scenarios: they must pass on the real system and FAIL when a role's tool is broken (negative controls)
+def test_every_role_has_a_passing_job_scenario(report):
+    from bot.training import scenarios
+    assert set(scenarios.SCENARIOS) == {r.id for r in roles.ROLES}
+    for r in report["roles"]:
+        assert r["scenario_ok"], (r["id"], r["scenario_detail"])
+
+
+@pytest.mark.parametrize("role_id, breakage", [
+    ("executive_assistant", ("attr", "bot.tools.calendar", "find_conflicts", lambda *a, **k: [])),
+    ("personal_organizer", ("tool", "complete_task", lambda id: {"updated": 0})),
+    ("community_moderator", ("attr", "bot.tools.moderation", "check_text", lambda text: [])),
+    ("utility_expert", ("tool", "calculate", lambda expression: 0)),
+    ("game_host", ("tool", "flip_coin", lambda: "edge")),
+    ("trainer", ("tool", "learn_instruction", lambda trigger, action: {"id": 0})),
+    ("research_analyst", ("attr", "bot.web", "robots_allowed", lambda url: True)),
+    ("developer_assistant", ("tool", "run_python", lambda code, timeout=10: {"exit_code": 1, "stdout": "", "stderr": ""})),
+    ("data_analyst", ("tool", "describe_data", lambda path: {"shape": [0, 0]})),
+    ("conversationalist", ("tool", "add_task", None)),
+])
+def test_scenarios_fail_when_the_roles_tools_are_broken(role_id, breakage, monkeypatch):
+    import importlib
+    from bot.training import scenarios
+    kind = breakage[0]
+    if kind == "attr":
+        monkeypatch.setattr(importlib.import_module(breakage[1]), breakage[2], breakage[3])
+    elif role_id == "conversationalist":
+        # small talk must never touch state: simulate an over-eager bot that turns any text into a task
+        from bot import offline
+        monkeypatch.setattr(offline, "parse", lambda text, depth=0: ("add_task", {"title": text}))
+    else:
+        monkeypatch.setitem(registry._TOOLS[breakage[1]], "fn", breakage[2])
+    ok, detail = scenarios.run(role_id)
+    assert not ok, f"{role_id} scenario still passed with a broken tool"
+    assert detail and detail != "ok"

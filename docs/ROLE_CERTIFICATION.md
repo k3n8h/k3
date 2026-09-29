@@ -6,9 +6,11 @@ Modes: **trained** free-form intent; **command** explicit command form offline (
 
 _Generated with `python -m bot.train --certify`; 5026 generated training examples._
 
-## Research Analyst  -  CERTIFIED (5/5 skills certified)
+## Research Analyst  -  CERTIFIED (5/5 skills certified, job scenario passed)
 
 Find, read, extract and cite information from the web.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -22,9 +24,11 @@ Open items:
 - **Research a topic with sources** [stress] `tell me what the literature says about intermittent fasting` expected `research|web_search`, got `__unknown__`
 - **Read a web page** [stress] `bring me the contents of https://example.net/post/12` expected `web_fetch`, got `__text__`
 
-## Executive Assistant (Scheduler)  -  CERTIFIED (6/6 skills certified)
+## Executive Assistant (Scheduler)  -  CERTIFIED (6/6 skills certified, job scenario passed)
 
 Manage classes, appointments, free time and unattended jobs.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -38,9 +42,11 @@ Manage classes, appointments, free time and unattended jobs.
 Open items:
 - **Review the calendar** [stress] `qu'est-ce que j'ai au programme` expected `list_events`, got `__unknown__`
 
-## Personal Organizer  -  CERTIFIED (6/6 skills certified)
+## Personal Organizer  -  CERTIFIED (6/6 skills certified, job scenario passed)
 
 Keep to-dos and notes tidy and findable.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -54,9 +60,11 @@ Keep to-dos and notes tidy and findable.
 Open items:
 - **Add tasks** [stress] `hay que sacar la basura` expected `add_task`, got `__unknown__`
 
-## Data Analyst  -  CERTIFIED (3/3 skills certified)
+## Data Analyst  -  CERTIFIED (3/3 skills certified, job scenario passed)
 
 Summarize, filter and chart tabular data.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -64,9 +72,11 @@ Summarize, filter and chart tabular data.
 | Filter and aggregate | command | query_data | - | 2/2 | 1/1 | 0/0 | certified |
 | Chart data | trained | make_chart | en | 2/2 | 2/2 | 3/3 | certified |
 
-## Developer Assistant  -  CERTIFIED (4/4 skills certified)
+## Developer Assistant  -  CERTIFIED (4/4 skills certified, job scenario passed)
 
 Work with workspace files and run small Python snippets.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -78,9 +88,11 @@ Work with workspace files and run small Python snippets.
 Open items:
 - **Read files** [stress] `show what is written in todo.txt` expected `read_file`, got `list_tasks`
 
-## Creative Writer & Designer  -  CERTIFIED (2/2 skills certified)
+## Creative Writer & Designer  -  CERTIFIED (2/2 skills certified, job scenario passed)
 
 Compose text, code, translations, designs and brainstorms (needs a model).
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -90,9 +102,11 @@ Compose text, code, translations, designs and brainstorms (needs a model).
 Open items:
 - **Write essays, poems, emails, code; translate** [holdout] `translate good morning to german` expected `text:language model`, got `__unknown__: I'm running offline (no model configured), so I understand t`
 
-## Community Moderator  -  CERTIFIED (4/4 skills certified)
+## Community Moderator  -  CERTIFIED (4/4 skills certified, job scenario passed)
 
 Keep chat civil: filter words, warn and mute users, keep a record.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -104,9 +118,11 @@ Keep chat civil: filter words, warn and mute users, keep a record.
 Open items:
 - **Screen text for profanity** [stress] `filter this comment: great post thanks` expected `moderate_text`, got `moderate_text {'text': 'great post'}`
 
-## Calculation & Utility Expert  -  CERTIFIED (5/5 skills certified)
+## Calculation & Utility Expert  -  CERTIFIED (5/5 skills certified, job scenario passed)
 
 Arithmetic, dates, time, unit conversion and polls.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -116,9 +132,11 @@ Arithmetic, dates, time, unit conversion and polls.
 | Convert units | trained | convert_units | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 | Create polls | trained | make_poll | en,es,fr,de,pt,it,ru | 2/2 | 1/1 | 3/3 | certified |
 
-## Game Host  -  CERTIFIED (4/4 skills certified)
+## Game Host  -  CERTIFIED (4/4 skills certified, job scenario passed)
 
 Run dice, coin flips, random picks and word games.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -127,9 +145,11 @@ Run dice, coin flips, random picks and word games.
 | Pick randomly between options | trained | pick_random | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 | Word scramble | trained | scramble_word | en,es,fr,de,pt,it,ru | 2/2 | 2/2 | 3/3 | certified |
 
-## Trainer & Teacher (self-improvement)  -  CERTIFIED (8/8 skills certified)
+## Trainer & Teacher (self-improvement)  -  CERTIFIED (8/8 skills certified, job scenario passed)
 
 Learn from the user: shortcuts, phrasings, corrections; explain capabilities.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|
@@ -145,9 +165,11 @@ Learn from the user: shortcuts, phrasings, corrections; explain capabilities.
 Open items:
 - **Recall what was learned** [stress] `list the things i told you to remember` expected `list_lessons`, got `__unknown__`
 
-## Conversation Partner  -  CERTIFIED (1/1 skills certified)
+## Conversation Partner  -  CERTIFIED (1/1 skills certified, job scenario passed)
 
 Recognize small talk; offline it abstains instead of guessing.
+
+Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): **passed**
 
 | Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |
 |---|---|---|---|---|---|---|---|

@@ -2,11 +2,11 @@
 
 For each skill: (1) its tools exist and carry the right safety flags, (2) the intent is trained in which
 languages, (3) the exam passes on dev phrasings (used while improving) and on holdout phrasings (never trained on).
-Runs against the shipped seed model in a scratch database, so a user's own lessons/examples can't skew the result.
+Each role also runs an end-to-end **job scenario** (bot/training/scenarios.py). Runs against the shipped seed model in a scratch database, so a user's own lessons/examples can't skew the result.
 """
 from bot import learner, memory, registry
 from bot.training import roles as R
-from bot.training import seed
+from bot.training import scenarios, seed
 
 DEV_PASS = 0.75       # a skill is certified when dev >= 75% ...
 HOLDOUT_PASS = 0.60   # ... and holdout >= 60%
@@ -96,8 +96,10 @@ def certify(role_id: str = "") -> dict:
                                      "dev": res["d"], "holdout": res["h"], "stress": stress, "problems": problems,
                                      "failures": failures, "status": status})
             n_ok = sum(s["status"] == "certified" for s in rr["skills"])
-            rr["certified"] = n_ok == len(rr["skills"])
-            rr["summary"] = f"{n_ok}/{len(rr['skills'])} skills certified"
+            rr["scenario_ok"], rr["scenario_detail"] = scenarios.run(role.id)
+            rr["certified"] = n_ok == len(rr["skills"]) and rr["scenario_ok"]
+            rr["summary"] = (f"{n_ok}/{len(rr['skills'])} skills certified, job scenario "
+                             f"{'passed' if rr['scenario_ok'] else 'FAILED: ' + rr['scenario_detail']}")
             out["roles"].append(rr)
     return out
 
@@ -116,6 +118,8 @@ def render_markdown(rep: dict) -> str:
          f"_Generated with `python -m bot.train --certify`; {rep['trained_examples']} generated training examples._", ""]
     for r in rep["roles"]:
         L += [f"## {r['name']}  -  {'CERTIFIED' if r['certified'] else 'needs work'} ({r['summary']})", "", r["mission"], "",
+              "Job scenario (real tools, multi-step, scratch DB + workspace, some steps in other languages): "
+              + ("**passed**" if r["scenario_ok"] else f"**FAILED** - {r['scenario_detail']}"), "",
               "| Skill | Mode | Tools | Langs | Dev | Holdout | Stress | Status |", "|---|---|---|---|---|---|---|---|"]
         for s in r["skills"]:
             langs = ",".join(s["languages"]) if s["languages"] else "-"

@@ -93,6 +93,11 @@ has a competency exam split into **dev** phrasings (part of the training curricu
 scratch database and writes [`docs/ROLE_CERTIFICATION.md`](docs/ROLE_CERTIFICATION.md) with per-skill results,
 language coverage and open items. Tests fail if a tool has no owning skill, a skill lacks exams, or results drop.
 
+Each role also runs an end-to-end **job scenario** (`bot/training/scenarios.py`): a multi-step workflow with the real
+tools in a scratch database and workspace (book, detect a double booking, refuse a cancel; add/complete tasks; write a
+CSV then describe, filter and chart it; crawl a local site honoring robots.txt; warn, mute and audit a user, some steps
+in other languages). Tests include negative controls that break each role's tool and require its scenario to fail.
+
 Every skill also faces an independent **stress exam** (differently worded, indirect, typo'd, other languages; never
 trained on). Confidence is risk-tiered: state-changing tools need 90% confidence *and* at least one word from that
 tool's own command wording (so n-gram luck can't add a blocklist word from "blah blah"), append-only tools (tasks,
