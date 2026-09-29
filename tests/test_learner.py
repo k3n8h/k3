@@ -191,3 +191,19 @@ def test_teach_an_unrecognized_phrase_then_it_is_understood():
     assert "error" in a.run("good")                       # nothing to confirm: it did not act
     assert 'total' in a.run("that means roll 1d6")      # learns it and runs the command
     assert learner.interpret(phrase)["tool"] == "roll_dice"
+
+
+def test_teach_flow_regressions():
+    from bot.offline import parse_grammar
+    for p in ("i meant to call you yesterday", "that means nothing to me", "I meant business"):
+        assert parse_grammar(p) is None, p                       # ordinary sentences are not corrections
+    a = bot()
+    a.run('learn "tools list" => tools')
+    a.run("roll 1d6")
+    a.run("tools list")                                          # taught rule: understood, must not wipe LAST
+    assert learner.LAST["tool"] == "roll_dice"
+    assert "wrong =>" not in a.run("write me a poem about the sea")   # generative reply is not a teach prompt
+    a.run("yeet a cube")
+    a.run("that means roll 1d6")
+    assert learner.LAST["tool"] == "roll_dice"                   # corrected action becomes the new LAST
+    assert "reinforced" in a.run("good")

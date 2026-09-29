@@ -3,12 +3,16 @@
 Single-user local server. Destructive tools are denied in the web UI (no interactive confirm).
 """
 from fastapi import FastAPI
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from bot.agent import Agent
 
 app = FastAPI(title="K3 bot")
+# Local single-user server: reject foreign Host headers (DNS-rebinding). Extend via BOT_ALLOWED_HOSTS=a.com,b.com
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=["localhost", "127.0.0.1", "testserver", "[::1]"]
+                   + [h for h in __import__("os").environ.get("BOT_ALLOWED_HOSTS", "").split(",") if h])
 _agent: Agent | None = None
 
 

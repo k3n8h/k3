@@ -14,12 +14,13 @@ HELP = ("I'm running offline (no model configured), so I understand these comman
        "  calc <expr> | roll 2d6 | flip | now | add task <t> | tasks | note <title>: <body> | notes <q>\n"
        "  events | cancel event <id> | learn \"<trigger>\" => <command> | lessons | forget <id> | tools\n"
        "  train | train status | train add \"<phrase>\" => <command> | train from <file> | train reset\n"
-       "  good | wrong => <command>   (teach me from my last answer)\n"
+       "  good | wrong => <command> | that means <command>   (teach me from my last answer or an unrecognized phrase)\n"
        "I can also handle free-form phrasing once trained. For open conversation set ANTHROPIC_API_KEY or "
        "BOT_BASE_URL (Ollama/OpenAI-compatible).")
 
 TRAIN_TOOLS = {"train_model", "training_status", "add_training_example", "train_from_file", "reset_training",
                "mark_wrong", "mark_good"}
+UNKNOWN = "__unknown__"     # nothing understood the phrase: remember it so it can be taught
 _LEARN = re.compile(r'^learn\s+["\'“](.+?)["\'”]\s*(?:=>|->|=)\s*(.+)$', re.I | re.S)
 _TRAIN_ADD = re.compile(r'^train add\s+["\'“](.+?)["\'”]\s*(?:=>|->|=)\s*(.+)$', re.I | re.S)
 
@@ -42,8 +43,12 @@ def parse_grammar(text: str):
         return "reset_training", {}
     if m := re.match(r"train from\s+(\S+)$", t, re.I):
         return "train_from_file", {"path": m.group(1)}
-    if m := re.match(r"(?:(?:wrong|that means|i meant)\s*(?:=>|->|:)|(?:that means|i meant)\s+)\s*(.+)$", t, re.I | re.S):
+    if m := re.match(r"(?:wrong|that means|i meant)\s*(?:=>|->|:)\s*(.+)$", t, re.I | re.S):
         return "mark_wrong", {"command": m.group(1).strip()}
+    if m := re.match(r"(?:that means|i meant)\s+(.+)$", t, re.I | re.S):   # only if the rest is a real command
+        inner = parse_grammar(m.group(1))
+        if inner and inner[0] not in ("__text__", "mark_wrong"):
+            return "mark_wrong", {"command": m.group(1).strip()}
     if low in ("good", "correct", "that was right"):
         return "mark_good", {}
     if low in ("lessons", "what have you learned"):
@@ -103,7 +108,7 @@ def parse(text: str, depth: int = 0):
         return g
     guess = learner.interpret(text)
     if guess is None:
-        return "__text__", HELP
+        return UNKNOWN, HELP
     tool, args = guess["tool"], guess["args"]
     if tool == "needs_model":
         return "__text__", ("That's an open-ended generation task (writing, coding, translating, brainstorming, "
@@ -119,20 +124,19 @@ def parse(text: str, depth: int = 0):
 
 class OfflineProvider(Provider):
     name = "offline"
+    user_driven = True      # the user's own words choose every action; no model can be steered by web text
 
     def complete(self, system, messages, tools, max_tokens=4096) -> Reply:
         last = messages[-1]["content"]
         if not isinstance(last, str):  # tool results came back: just relay them
             return Reply("\n".join(str(b["content"]) for b in last))
         name, args = parse(last)
+        if name == UNKNOWN:
+            learner.remember(last, None, {})
+            return Reply(args + "\n(Tell me what you meant with `wrong => <command>` or `that means <command>` "
+                                "and I'll learn it.)")
         if name == "__text__":
-            if not parse_grammar(last):          # an unrecognized phrase: let `wrong => <command>` teach it
-                learner.LAST.clear()
-                learner.LAST.update(phrase=last, tool=None, args={})
-                args += "\n(Tell me what you meant with `wrong => <command>` and I'll learn it.)" \
-                    if args == HELP else ""
             return Reply(args)
         if name not in TRAIN_TOOLS:
-            learner.LAST.clear()
-            learner.LAST.update(phrase=last, tool=name, args=args)
+            learner.remember(last, name, args)
         return Reply(tool_calls=[ToolCall(uuid.uuid4().hex[:8], name, args)])

@@ -36,7 +36,8 @@ class Agent:
             for call in reply.tool_calls:
                 if on_tool:
                     on_tool(call.name, call.input)
-                if registry.is_destructive(call.name) and not self.confirm(call.name, call.input):
+                if registry.needs_confirmation(call.name, getattr(self.provider, "user_driven", False)) \
+                        and not self.confirm(call.name, call.input):
                     out = "error: user declined this destructive action"
                 else:
                     out = registry.call(call.name, call.input)

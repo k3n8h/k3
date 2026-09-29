@@ -14,7 +14,7 @@ def run_goal(goal: str) -> str:
     return agent.run(goal)
 
 
-@tool("Schedule an autonomous job: `goal` will be worked on unattended at run_at (ISO datetime).")
+@tool("Schedule an autonomous job: `goal` will be worked on unattended at run_at (ISO datetime).", sensitive=True)
 def schedule_job(goal: str, run_at: str) -> dict:
     return {"id": memory.execute("INSERT INTO jobs(goal,run_at) VALUES(?,?)", (goal, run_at)).lastrowid}
 

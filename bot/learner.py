@@ -40,7 +40,16 @@ STOPS = {"please", "thanks", "thank", "you", "can", "could", "would", "hey", "k3
          "gli", "su", "mi", "ti", "com", "em", "en", "y", "e", "et", "und", "o", "ou", "oder", "a", "ao"}
 NEVER_AUTORUN_HINT = "I won't run destructive actions from a guess"
 
-LAST: dict = {}   # most recent action taken for a user phrase, so `good` / `wrong` can learn from it
+LAST: dict = {}
+
+
+def remember(phrase: str, tool: Optional[str], args: dict) -> None:
+    """Record the last thing the bot did (tool=None: it understood nothing) for `good` / `wrong =>`."""
+    LAST.clear()
+    LAST.update(phrase=phrase, tool=tool, args=args)
+
+
+   # most recent action taken for a user phrase, so `good` / `wrong` can learn from it
 
 
 def fold(text: str) -> str:

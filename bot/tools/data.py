@@ -1,8 +1,21 @@
 """Data analysis over CSV/XLSX files in the workspace."""
+import re
+
 import pandas as pd
 
 from bot.registry import tool
 from bot.tools.code import safe_path
+
+
+AGGS = {"sum", "mean", "count", "min", "max", "median", "std", "nunique"}
+
+
+def check_filter(expr: str) -> str:
+    """pandas .query() evaluates expressions; allow only column/literal comparisons, never calls or attributes."""
+    bare = re.sub(r"\"[^\"]*\"|'[^']*'|`[^`]*`", '""', expr)          # ignore string literals / `col names`
+    if "__" in bare or "@" in bare or re.search(r"[A-Za-z_]\w*\s*\(", bare) or re.search(r"[A-Za-z_\]\)]\s*\.\s*[A-Za-z_]", bare):
+        raise ValueError("filter may only compare columns to values (no function calls, attributes or @variables)")
+    return expr
 
 
 def load(path: str) -> pd.DataFrame:
@@ -22,8 +35,10 @@ def describe_data(path: str) -> dict:
 def query_data(path: str, filter: str = "", group_by: str = "", column: str = "", agg: str = "mean") -> list:
     df = load(path)
     if filter:
-        df = df.query(filter)
+        df = df.query(check_filter(filter))
     if group_by:
+        if agg not in AGGS:
+            raise ValueError(f"agg must be one of {sorted(AGGS)}")
         df = getattr(df.groupby(group_by)[column], agg)().reset_index()
     return df.head(100).to_dict("records")
 

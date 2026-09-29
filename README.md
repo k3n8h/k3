@@ -68,3 +68,15 @@ task types, skills, subject areas) and rendered to [`docs/CAPABILITIES.md`](docs
 - **Scheduling from free text:** "book a class math on 2030-05-06 at 10:30", "dentist tomorrow at 3pm for 90 minutes".
 - **Measured quality:** [`docs/TRAINING_REPORT.md`](docs/TRAINING_REPORT.md) (`python -m bot.train --report`), scored on
   wordings held out from training, broken down by language, capability and tool.
+
+## Security model
+- **Destructive tools** (delete/cancel/reset) always ask for confirmation; the web UI and unattended jobs deny them.
+- **Sensitive tools** (`run_python`, `write_file`, `learn_instruction`, `schedule_job`, training imports) ask when a
+  *model* chose the call, because text it read on the web could have steered it (prompt injection). In offline mode
+  they run directly since your own words are the only input.
+- The system prompt tells models that web/file/tool text is untrusted data.
+- `query_data` filters reject function calls, attributes and `@variables`; aggregations are whitelisted.
+- The web UI is single-user and only accepts `localhost`/`127.0.0.1` Host headers (extend with `BOT_ALLOWED_HOSTS`).
+- Fetching blocks private/loopback addresses and re-checks every redirect hop. Known limitation: the hostname is
+  resolved once for the check and again by the HTTP client, so a hostile DNS server could still race it (DNS rebinding).
+- `run_python` is a timeout/cwd-restricted subprocess, **not** a sandbox: run the bot in a container if you connect a model.

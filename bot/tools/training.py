@@ -35,7 +35,7 @@ def training_status() -> dict:
             "user_examples": len(ex), "by_source": by_source}
 
 
-@tool("Teach the learner that `phrase` means `command` (an exact command like 'research solar panels'), then retrain.")
+@tool("Teach the learner that `phrase` means `command` (an exact command like 'research solar panels'), then retrain.", sensitive=True)
 def add_training_example(phrase: str, command: str) -> dict:
     name, args = _command_to_call(command)
     learner.add_example(phrase, name, args, source="user", weight=2)
@@ -43,7 +43,7 @@ def add_training_example(phrase: str, command: str) -> dict:
     return {"learned": {"phrase": phrase, "tool": name, "args": args}}
 
 
-@tool("Train from a workspace file: JSONL lines {\"phrase\",\"tool\",\"args\"} or CSV columns phrase,tool,args(json).")
+@tool("Train from a workspace file: JSONL lines {\"phrase\",\"tool\",\"args\"} or CSV columns phrase,tool,args(json).", sensitive=True)
 def train_from_file(path: str) -> dict:
     p = safe_path(path)
     rows = []
@@ -65,15 +65,16 @@ def train_from_file(path: str) -> dict:
 
 
 @tool("The last answer was wrong: `command` is what the user actually meant (exact command). "
-      "Learns the correction, retrains and runs the corrected command.")
+      "Learns the correction, retrains and runs the corrected command.", sensitive=True)
 def mark_wrong(command: str) -> dict:
     if not learner.LAST:
         raise ValueError("nothing to correct yet")
     name, args = _command_to_call(command)
-    learner.add_example(learner.LAST["phrase"], name, args, source="correction", weight=3)
+    phrase = learner.LAST["phrase"]
+    learner.add_example(phrase, name, args, source="correction", weight=3)
     learner.fit_all()
-    return {"learned": {"phrase": learner.LAST["phrase"], "tool": name, "args": args},
-            "result": registry.call(name, args)}
+    learner.remember(phrase, name, args)          # so a following `good` reinforces the corrected action
+    return {"learned": {"phrase": phrase, "tool": name, "args": args}, "result": registry.call(name, args)}
 
 
 @tool("The last answer was right: reinforce it.")

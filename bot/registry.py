@@ -25,11 +25,12 @@ def _schema_for(fn: Callable) -> dict:
     return {"type": "object", "properties": props, "required": required}
 
 
-def tool(description: str, destructive: bool = False):
+def tool(description: str, destructive: bool = False, sensitive: bool = False):
     def deco(fn: Callable) -> Callable:
         _TOOLS[fn.__name__] = {
             "fn": fn,
             "destructive": destructive,
+            "sensitive": sensitive,
             "definition": {"name": fn.__name__, "description": description, "input_schema": _schema_for(fn)},
         }
         return fn
@@ -42,6 +43,13 @@ def definitions() -> list[dict]:
 
 def is_destructive(name: str) -> bool:
     return bool(_TOOLS.get(name, {}).get("destructive"))
+
+
+def needs_confirmation(name: str, user_driven: bool) -> bool:
+    """Destructive tools always ask. Sensitive ones (code execution, persistence) ask only when a model
+    chose the call, since text a model read on the web could have steered it (prompt injection)."""
+    e = _TOOLS.get(name, {})
+    return bool(e.get("destructive") or (e.get("sensitive") and not user_driven))
 
 
 def call(name: str, args: dict) -> str:
